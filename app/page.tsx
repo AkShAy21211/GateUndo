@@ -2466,23 +2466,6 @@ function focusMapAroundUser(
   });
 }
 
-function fitMapToGates(
-  map: mapboxgl.Map,
-  mapboxModule: typeof mapboxgl,
-  gates: GateView[],
-) {
-  const coordinates = gates
-    .filter(isValidCoordinate)
-    .map((gate) => [gate.lng, gate.lat] as [number, number]);
-
-  if (coordinates.length === 0) {
-    map.easeTo({ center: KERALA_CENTER, zoom: 7, duration: 600 });
-    return;
-  }
-
-  fitMapToCoordinates(map, mapboxModule, coordinates);
-}
-
 function fitMapToVisiblePoints(
   map: mapboxgl.Map,
   mapboxModule: typeof mapboxgl,
@@ -2526,18 +2509,6 @@ function fitMapToCoordinates(
 
 function isValidCoordinate(point: { lat: number; lng: number }) {
   return Number.isFinite(point.lat) && Number.isFinite(point.lng);
-}
-
-function statusColor(status: GateStatus) {
-  if (status === "open") {
-    return "#22C55E";
-  }
-
-  if (status === "closed") {
-    return "#EF4444";
-  }
-
-  return "#6B7280";
 }
 
 function applyRailUndoMapTheme(map: mapboxgl.Map) {
