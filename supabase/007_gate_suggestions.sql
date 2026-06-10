@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS gate_suggestions (
   district TEXT NOT NULL CHECK (district IN (
     'Alappuzha',
     'Ernakulam',
+    'Idukki',
     'Kannur',
     'Kasaragod',
     'Kollam',
@@ -16,6 +17,7 @@ CREATE TABLE IF NOT EXISTS gate_suggestions (
     'Pathanamthitta',
     'Thrissur',
     'Thiruvananthapuram',
+    'Wayanad'
   )),
   lat DOUBLE PRECISION NOT NULL CHECK (lat BETWEEN 8.0 AND 13.0),
   lng DOUBLE PRECISION NOT NULL CHECK (lng BETWEEN 74.5 AND 78.0),
