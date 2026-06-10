@@ -29,7 +29,6 @@ const DISTRICTS = [
   "All",
   "Alappuzha",
   "Ernakulam",
-  "Idukki",
   "Kannur",
   "Kasaragod",
   "Kollam",
@@ -39,12 +38,15 @@ const DISTRICTS = [
   "Palakkad",
   "Pathanamthitta",
   "Thrissur",
-  "Thiruvananthapuram",
-  "Wayanad",
+  "Thiruvananthapuram"
 ];
 type ReportStatus = "open" | "closed";
 
 type GateStatus = ReportStatus | "unknown";
+
+type SuggestionStatus = "pending" | "community_confirmed";
+
+type SuggestionVote = "confirm" | "reject";
 
 type GateStatusRow = {
   id: string;
@@ -76,7 +78,42 @@ type GateView = {
   lastReportedAt: string | null;
 };
 
+type GateSuggestionRow = {
+  id: string;
+  district: string;
+  lat: number;
+  lng: number;
+  road_name: string;
+  note: string | null;
+  status: SuggestionStatus;
+  confirm_count: number;
+  reject_count: number;
+  nearby_confirm_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type GateSuggestionView = {
+  id: string;
+  district: string;
+  lat: number;
+  lng: number;
+  roadName: string;
+  note: string | null;
+  status: SuggestionStatus;
+  confirmCount: number;
+  rejectCount: number;
+  nearbyConfirmCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type UserLocation = {
+  lat: number;
+  lng: number;
+};
+
+type SuggestionDraft = {
   lat: number;
   lng: number;
 };
@@ -117,6 +154,10 @@ type ReportFunctionData = {
     status: ReportStatus;
     reported_at: string | null;
   };
+};
+
+type GateSuggestionFunctionData = {
+  suggestion?: GateSuggestionRow;
 };
 
 type TurnstileApi = {
@@ -298,6 +339,25 @@ function normalizeGate(gate: GateStatusRow): GateView {
   };
 }
 
+function normalizeSuggestion(
+  suggestion: GateSuggestionRow,
+): GateSuggestionView {
+  return {
+    id: suggestion.id,
+    district: suggestion.district,
+    lat: suggestion.lat,
+    lng: suggestion.lng,
+    roadName: suggestion.road_name,
+    note: suggestion.note,
+    status: suggestion.status,
+    confirmCount: suggestion.confirm_count,
+    rejectCount: suggestion.reject_count,
+    nearbyConfirmCount: suggestion.nearby_confirm_count,
+    createdAt: suggestion.created_at,
+    updatedAt: suggestion.updated_at,
+  };
+}
+
 function getConsensusStatus(openCount: number, closedCount: number): GateStatus {
   if (openCount > closedCount) {
     return "open";
@@ -316,6 +376,22 @@ function getGateDistance(gate: GateView, userLocation: UserLocation | null) {
   }
 
   return distanceInKm(userLocation.lat, userLocation.lng, gate.lat, gate.lng);
+}
+
+function getSuggestionDistance(
+  suggestion: GateSuggestionView,
+  userLocation: UserLocation | null,
+) {
+  if (!userLocation || !isValidCoordinate(suggestion)) {
+    return null;
+  }
+
+  return distanceInKm(
+    userLocation.lat,
+    userLocation.lng,
+    suggestion.lat,
+    suggestion.lng,
+  );
 }
 
 function formatDistance(distanceKm: number | null) {
@@ -466,11 +542,32 @@ function isRateLimitError(error: ReportInvokeError) {
   );
 }
 
+function isDuplicateSuggestionError(error: ReportInvokeError) {
+  return error.context?.status === 409 || error.message.includes("409");
+}
+
+function suggestionStatusLabel(status: SuggestionStatus) {
+  return status === "community_confirmed" ? "COMMUNITY CONFIRMED" : "PENDING";
+}
+
+function suggestionStatusDetail(suggestion: GateSuggestionView) {
+  if (suggestion.status === "community_confirmed") {
+    return "ready for review";
+  }
+
+  return `${suggestion.confirmCount} confirm / ${suggestion.rejectCount} reject`;
+}
+
 export default function Home() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedDistrict, setSelectedDistrict] = useState("All");
   const [gates, setGates] = useState<GateView[]>([]);
+  const [suggestions, setSuggestions] = useState<GateSuggestionView[]>([]);
   const [selectedGate, setSelectedGate] = useState<GateView | null>(null);
+  const [selectedSuggestion, setSelectedSuggestion] =
+    useState<GateSuggestionView | null>(null);
+  const [suggestionDraft, setSuggestionDraft] =
+    useState<SuggestionDraft | null>(null);
   const [sheetOffset, setSheetOffset] = useState(0);
   const [toastMessage, setToastMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -480,6 +577,8 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [isOnline, setIsOnline] = useState(true);
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const [isSubmittingSuggestion, setIsSubmittingSuggestion] = useState(false);
+  const [isVotingSuggestion, setIsVotingSuggestion] = useState(false);
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const dragStartY = useRef<number | null>(null);
@@ -545,10 +644,63 @@ export default function Home() {
     return true;
   }, []);
 
+  const fetchGateSuggestions = useCallback(async () => {
+    let result:
+      | {
+          data: unknown[] | null;
+          error: { message: string } | null;
+        }
+      | undefined;
+
+    try {
+      result = await withTimeout(
+        supabase
+          .from("gate_suggestions")
+          .select(
+            [
+              "id",
+              "district",
+              "lat",
+              "lng",
+              "road_name",
+              "note",
+              "status",
+              "confirm_count",
+              "reject_count",
+              "nearby_confirm_count",
+              "created_at",
+              "updated_at",
+            ].join(", "),
+          )
+          .in("status", ["pending", "community_confirmed"])
+          .order("updated_at", { ascending: false }),
+      );
+    } catch {
+      return false;
+    }
+
+    const { data, error } = result;
+
+    if (error) {
+      return false;
+    }
+
+    setSuggestions(
+      ((data ?? []) as unknown as GateSuggestionRow[]).map(
+        normalizeSuggestion,
+      ),
+    );
+    return true;
+  }, []);
+
   useEffect(() => {
     setIsOnline(window.navigator.onLine);
     fetchGates();
-    const intervalId = window.setInterval(fetchGates, 30000);
+    fetchGateSuggestions();
+    const intervalId = window.setInterval(() => {
+      fetchGates();
+      fetchGateSuggestions();
+    }, 30000);
     const clockIntervalId = window.setInterval(
       () => setCurrentTime(Date.now()),
       15000,
@@ -567,9 +719,24 @@ export default function Home() {
         },
       )
       .subscribe();
+    const suggestionEventsChannel = supabase
+      .channel("gate-suggestion-events")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "gate_suggestions",
+        },
+        () => {
+          fetchGateSuggestions();
+        },
+      )
+      .subscribe();
     const handleOnline = () => {
       setIsOnline(true);
       fetchGates();
+      fetchGateSuggestions();
     };
     const handleOffline = () => setIsOnline(false);
 
@@ -580,10 +747,11 @@ export default function Home() {
       window.clearInterval(intervalId);
       window.clearInterval(clockIntervalId);
       supabase.removeChannel(reportEventsChannel);
+      supabase.removeChannel(suggestionEventsChannel);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, [fetchGates]);
+  }, [fetchGateSuggestions, fetchGates]);
 
   useEffect(() => {
     if (!toastMessage) {
@@ -624,9 +792,49 @@ export default function Home() {
     });
   }, [gates, selectedDistrict, userLocation]);
 
+  const filteredSuggestions = useMemo(() => {
+    const nextSuggestions =
+      selectedDistrict === "All"
+        ? suggestions
+        : suggestions.filter(
+            (suggestion) => suggestion.district === selectedDistrict,
+          );
+
+    if (!userLocation) {
+      return nextSuggestions;
+    }
+
+    return [...nextSuggestions].sort((firstSuggestion, secondSuggestion) => {
+      const firstDistance = getSuggestionDistance(
+        firstSuggestion,
+        userLocation,
+      );
+      const secondDistance = getSuggestionDistance(
+        secondSuggestion,
+        userLocation,
+      );
+
+      if (firstDistance === null && secondDistance === null) {
+        return firstSuggestion.roadName.localeCompare(secondSuggestion.roadName);
+      }
+
+      if (firstDistance === null) {
+        return 1;
+      }
+
+      if (secondDistance === null) {
+        return -1;
+      }
+
+      return firstDistance - secondDistance;
+    });
+  }, [selectedDistrict, suggestions, userLocation]);
+
   const closeSheet = useCallback(() => {
     setSheetOffset(0);
     setSelectedGate(null);
+    setSelectedSuggestion(null);
+    setSuggestionDraft(null);
   }, []);
 
   const openSheet = useCallback((gate: GateView) => {
@@ -634,14 +842,32 @@ export default function Home() {
     setSelectedGate(gate);
   }, []);
 
+  const openSuggestionReview = useCallback((suggestion: GateSuggestionView) => {
+    setSheetOffset(0);
+    setSelectedSuggestion(suggestion);
+  }, []);
+
+  const openSuggestionDraft = useCallback(
+    (draft: SuggestionDraft) => {
+      if (selectedDistrict === "All") {
+        setToastMessage("Select a district first.");
+        return;
+      }
+
+      setSheetOffset(0);
+      setSuggestionDraft(draft);
+    },
+    [selectedDistrict],
+  );
+
   const refreshGates = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      await fetchGates();
+      await Promise.all([fetchGates(), fetchGateSuggestions()]);
     } finally {
       setIsRefreshing(false);
     }
-  }, [fetchGates]);
+  }, [fetchGateSuggestions, fetchGates]);
 
   const useNearestGates = useCallback(async () => {
     if (isLocating) {
@@ -767,8 +993,159 @@ export default function Home() {
     [closeSheet, fetchGates, selectedGate],
   );
 
+  const submitGateSuggestion = useCallback(
+    async ({
+      roadName,
+      note,
+      turnstileToken,
+    }: {
+      roadName: string;
+      note: string;
+      turnstileToken: string | null;
+    }) => {
+      if (
+        !suggestionDraft ||
+        selectedDistrict === "All" ||
+        isSubmittingSuggestion
+      ) {
+        return;
+      }
+
+      setIsSubmittingSuggestion(true);
+
+      let error: ReportInvokeError | null = null;
+      let acceptedSuggestion: GateSuggestionRow | null = null;
+
+      try {
+        const result = await withTimeout(
+          supabase.functions.invoke("suggest-gate", {
+            body: {
+              district: selectedDistrict,
+              lat: suggestionDraft.lat,
+              lng: suggestionDraft.lng,
+              road_name: roadName,
+              note,
+              device_id: getDeviceId(),
+              turnstile_token: turnstileToken,
+            },
+          }),
+        );
+
+        error = result.error
+          ? {
+              message: result.error.message,
+              context: result.error.context as { status?: number } | undefined,
+            }
+          : null;
+        acceptedSuggestion =
+          ((result.data as GateSuggestionFunctionData | null)?.suggestion) ??
+          null;
+      } catch (suggestionError) {
+        error =
+          suggestionError instanceof Error
+            ? { message: suggestionError.message }
+            : { message: "Suggestion failed" };
+      }
+
+      if (error || !acceptedSuggestion) {
+        setToastMessage(
+          isRateLimitError(error ?? { message: "" })
+            ? "Please wait before suggesting again."
+            : isDuplicateSuggestionError(error ?? { message: "" })
+              ? "A gate or suggestion is already near here."
+              : "Suggestion not recorded. Try again.",
+        );
+        setIsSubmittingSuggestion(false);
+        return;
+      }
+
+      const nextSuggestion = normalizeSuggestion(acceptedSuggestion);
+      setSuggestions((currentSuggestions) => [
+        nextSuggestion,
+        ...currentSuggestions.filter(
+          (suggestion) => suggestion.id !== nextSuggestion.id,
+        ),
+      ]);
+      closeSheet();
+      setToastMessage("Gate suggestion added for review.");
+      setIsSubmittingSuggestion(false);
+    },
+    [
+      closeSheet,
+      isSubmittingSuggestion,
+      selectedDistrict,
+      suggestionDraft,
+    ],
+  );
+
+  const voteGateSuggestion = useCallback(
+    async (vote: SuggestionVote, turnstileToken: string | null) => {
+      if (!selectedSuggestion || isVotingSuggestion) {
+        return;
+      }
+
+      setIsVotingSuggestion(true);
+
+      let error: ReportInvokeError | null = null;
+      let acceptedSuggestion: GateSuggestionRow | null = null;
+
+      try {
+        const result = await withTimeout(
+          supabase.functions.invoke("vote-gate-suggestion", {
+            body: {
+              suggestion_id: selectedSuggestion.id,
+              vote,
+              device_id: getDeviceId(),
+              user_lat: userLocation?.lat ?? null,
+              user_lng: userLocation?.lng ?? null,
+              turnstile_token: turnstileToken,
+            },
+          }),
+        );
+
+        error = result.error
+          ? {
+              message: result.error.message,
+              context: result.error.context as { status?: number } | undefined,
+            }
+          : null;
+        acceptedSuggestion =
+          ((result.data as GateSuggestionFunctionData | null)?.suggestion) ??
+          null;
+      } catch (voteError) {
+        error =
+          voteError instanceof Error
+            ? { message: voteError.message }
+            : { message: "Vote failed" };
+      }
+
+      if (error || !acceptedSuggestion) {
+        setToastMessage(
+          isRateLimitError(error ?? { message: "" })
+            ? "Please wait before voting again."
+            : "Vote not recorded. Try again.",
+        );
+        setIsVotingSuggestion(false);
+        return;
+      }
+
+      const nextSuggestion = normalizeSuggestion(acceptedSuggestion);
+      setSuggestions((currentSuggestions) =>
+        currentSuggestions.map((suggestion) =>
+          suggestion.id === nextSuggestion.id ? nextSuggestion : suggestion,
+        ),
+      );
+      setSelectedSuggestion(nextSuggestion);
+      setToastMessage(
+        vote === "confirm" ? "Thanks for confirming." : "Thanks for checking.",
+      );
+      setIsVotingSuggestion(false);
+    },
+    [isVotingSuggestion, selectedSuggestion, userLocation],
+  );
+
   const handleSheetPointerDown = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
+    (event: React.PointerEvent<HTMLElement>) => {
       dragStartY.current = event.clientY;
       event.currentTarget.setPointerCapture(event.pointerId);
     },
@@ -776,7 +1153,7 @@ export default function Home() {
   );
 
   const handleSheetPointerMove = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
+    (event: React.PointerEvent<HTMLElement>) => {
       if (dragStartY.current === null) {
         return;
       }
@@ -980,9 +1357,13 @@ export default function Home() {
           <section aria-label="Railway gates map" className="w-full">
             <MapView
               gates={filteredGates}
+              suggestions={filteredSuggestions}
               isLoading={isLoading}
               errorMessage={errorMessage}
+              selectedDistrict={selectedDistrict}
               onOpenGate={openSheet}
+              onSuggestGate={openSuggestionDraft}
+              onOpenSuggestion={openSuggestionReview}
               userLocation={userLocation}
               isLocating={isLocating}
               onUseLocation={useNearestGates}
@@ -1017,6 +1398,34 @@ export default function Home() {
           onPointerUp={handleSheetPointerUp}
           onReport={submitReport}
           isSubmitting={isSubmittingReport}
+        />
+      ) : null}
+
+      {suggestionDraft && selectedDistrict !== "All" ? (
+        <SuggestGateSheet
+          district={selectedDistrict}
+          draft={suggestionDraft}
+          offset={sheetOffset}
+          onBackdropClick={closeSheet}
+          onPointerDown={handleSheetPointerDown}
+          onPointerMove={handleSheetPointerMove}
+          onPointerUp={handleSheetPointerUp}
+          onSubmit={submitGateSuggestion}
+          isSubmitting={isSubmittingSuggestion}
+        />
+      ) : null}
+
+      {selectedSuggestion ? (
+        <SuggestionReviewSheet
+          suggestion={selectedSuggestion}
+          distanceKm={getSuggestionDistance(selectedSuggestion, userLocation)}
+          offset={sheetOffset}
+          onBackdropClick={closeSheet}
+          onPointerDown={handleSheetPointerDown}
+          onPointerMove={handleSheetPointerMove}
+          onPointerUp={handleSheetPointerUp}
+          onVote={voteGateSuggestion}
+          isSubmitting={isVotingSuggestion}
         />
       ) : null}
 
@@ -1120,8 +1529,8 @@ function ReportSheet({
   gate: GateView;
   offset: number;
   onBackdropClick: () => void;
-  onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
-  onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
+  onPointerMove: (event: React.PointerEvent<HTMLElement>) => void;
   onPointerUp: () => void;
   onReport: (status: ReportStatus, turnstileToken: string | null) => void;
   isSubmitting: boolean;
@@ -1272,19 +1681,390 @@ function ReportSheet({
   );
 }
 
+function SuggestGateSheet({
+  district,
+  draft,
+  offset,
+  onBackdropClick,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onSubmit,
+  isSubmitting,
+}: {
+  district: string;
+  draft: SuggestionDraft;
+  offset: number;
+  onBackdropClick: () => void;
+  onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
+  onPointerMove: (event: React.PointerEvent<HTMLElement>) => void;
+  onPointerUp: () => void;
+  onSubmit: (payload: {
+    roadName: string;
+    note: string;
+    turnstileToken: string | null;
+  }) => void;
+  isSubmitting: boolean;
+}) {
+  const [roadName, setRoadName] = useState("");
+  const [note, setNote] = useState("");
+  const turnstileRef = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetIdRef = useRef<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileError, setTurnstileError] = useState(false);
+
+  useEffect(() => {
+    if (!isTurnstileEnabled || !turnstileRef.current) {
+      return;
+    }
+
+    let isMounted = true;
+
+    loadTurnstileScript()
+      .then(() => {
+        if (!isMounted || !window.turnstile || !turnstileRef.current) {
+          return;
+        }
+
+        turnstileWidgetIdRef.current = window.turnstile.render(
+          turnstileRef.current,
+          {
+            sitekey: TURNSTILE_SITE_KEY!,
+            theme: "dark",
+            size: "flexible",
+            callback: (token) => {
+              setTurnstileToken(token);
+              setTurnstileError(false);
+            },
+            "expired-callback": () => setTurnstileToken(null),
+            "error-callback": () => {
+              setTurnstileToken(null);
+              setTurnstileError(true);
+            },
+          },
+        );
+      })
+      .catch(() => setTurnstileError(true));
+
+    return () => {
+      isMounted = false;
+
+      if (turnstileWidgetIdRef.current && window.turnstile) {
+        window.turnstile.remove(turnstileWidgetIdRef.current);
+      }
+    };
+  }, []);
+
+  const canSubmit =
+    !isSubmitting &&
+    roadName.trim().length >= 3 &&
+    (!isTurnstileEnabled || Boolean(turnstileToken));
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!canSubmit) {
+      return;
+    }
+
+    onSubmit({
+      roadName: roadName.trim(),
+      note: note.trim(),
+      turnstileToken,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60]" role="presentation">
+      <button
+        type="button"
+        className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
+        aria-label="Close gate suggestion sheet"
+        onClick={onBackdropClick}
+      />
+      <div className="absolute inset-x-0 bottom-0 flex justify-center px-3 sm:px-4">
+        <form
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="suggest-sheet-title"
+          className="sheet-open w-full max-w-[460px] touch-none rounded-t-[20px] border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-4 pb-[calc(20px+env(safe-area-inset-bottom))] pt-3 shadow-2xl"
+          style={{
+            transform: `translateY(${offset}px)`,
+            transition: offset === 0 ? "transform 0.2s ease-out" : "none",
+          }}
+          onSubmit={handleSubmit}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          <div className="mx-auto mb-4 h-1 w-9 rounded-full bg-[var(--border-strong)]" />
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[13px] font-bold uppercase leading-[1.2] tracking-[0.08em] text-[var(--text-muted)]">
+                Suggest gate
+              </p>
+              <h2
+                id="suggest-sheet-title"
+                className="mt-1 text-[16px] font-semibold leading-[1.2] text-[var(--text-primary)]"
+              >
+                {district}
+              </h2>
+              <p className="mt-1 text-[13px] font-normal leading-[1.5] text-[var(--text-secondary)]">
+                {draft.lat.toFixed(5)}, {draft.lng.toFixed(5)}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onBackdropClick}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)]"
+              aria-label="Close gate suggestion sheet"
+            >
+              <X aria-hidden="true" className="h-5 w-5" />
+            </button>
+          </div>
+
+          <label className="block text-[13px] font-semibold leading-[1.5] text-[var(--text-secondary)]">
+            Road or place name
+            <input
+              value={roadName}
+              onChange={(event) => setRoadName(event.target.value)}
+              maxLength={100}
+              placeholder="Eg. Railway Station Road"
+              className="mt-2 min-h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 text-[15px] font-normal leading-[1.5] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+            />
+          </label>
+
+          <label className="mt-3 block text-[13px] font-semibold leading-[1.5] text-[var(--text-secondary)]">
+            Note
+            <textarea
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              maxLength={180}
+              rows={3}
+              placeholder="Optional nearby landmark"
+              className="mt-2 w-full resize-none rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-3 text-[15px] font-normal leading-[1.5] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+            />
+          </label>
+
+          {isTurnstileEnabled ? (
+            <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-2">
+              <div ref={turnstileRef} />
+              {turnstileError ? (
+                <p className="mt-2 text-[13px] font-semibold leading-[1.5] text-[var(--danger)]">
+                  Security check failed. Try again.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className="mt-4 flex min-h-[56px] w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 text-[15px] font-semibold leading-[1.2] text-[#0A0A0A] active:scale-[0.985] disabled:opacity-60"
+          >
+            <MapPin aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
+            {isSubmitting ? "Adding" : "Add pending suggestion"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function SuggestionReviewSheet({
+  suggestion,
+  distanceKm,
+  offset,
+  onBackdropClick,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onVote,
+  isSubmitting,
+}: {
+  suggestion: GateSuggestionView;
+  distanceKm: number | null;
+  offset: number;
+  onBackdropClick: () => void;
+  onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
+  onPointerMove: (event: React.PointerEvent<HTMLElement>) => void;
+  onPointerUp: () => void;
+  onVote: (vote: SuggestionVote, turnstileToken: string | null) => void;
+  isSubmitting: boolean;
+}) {
+  const turnstileRef = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetIdRef = useRef<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileError, setTurnstileError] = useState(false);
+  const canVote = !isSubmitting && (!isTurnstileEnabled || Boolean(turnstileToken));
+
+  useEffect(() => {
+    if (!isTurnstileEnabled || !turnstileRef.current) {
+      return;
+    }
+
+    let isMounted = true;
+
+    loadTurnstileScript()
+      .then(() => {
+        if (!isMounted || !window.turnstile || !turnstileRef.current) {
+          return;
+        }
+
+        turnstileWidgetIdRef.current = window.turnstile.render(
+          turnstileRef.current,
+          {
+            sitekey: TURNSTILE_SITE_KEY!,
+            theme: "dark",
+            size: "flexible",
+            callback: (token) => {
+              setTurnstileToken(token);
+              setTurnstileError(false);
+            },
+            "expired-callback": () => setTurnstileToken(null),
+            "error-callback": () => {
+              setTurnstileToken(null);
+              setTurnstileError(true);
+            },
+          },
+        );
+      })
+      .catch(() => setTurnstileError(true));
+
+    return () => {
+      isMounted = false;
+
+      if (turnstileWidgetIdRef.current && window.turnstile) {
+        window.turnstile.remove(turnstileWidgetIdRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[60]" role="presentation">
+      <button
+        type="button"
+        className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
+        aria-label="Close suggestion review sheet"
+        onClick={onBackdropClick}
+      />
+      <div className="absolute inset-x-0 bottom-0 flex justify-center px-3 sm:px-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="review-sheet-title"
+          className="sheet-open w-full max-w-[460px] touch-none rounded-t-[20px] border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-4 pb-[calc(20px+env(safe-area-inset-bottom))] pt-3 shadow-2xl"
+          style={{
+            transform: `translateY(${offset}px)`,
+            transition: offset === 0 ? "transform 0.2s ease-out" : "none",
+          }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          <div className="mx-auto mb-4 h-1 w-9 rounded-full bg-[var(--border-strong)]" />
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[13px] font-bold uppercase leading-[1.2] tracking-[0.08em] text-[var(--accent)]">
+                {suggestionStatusLabel(suggestion.status)}
+              </p>
+              <h2
+                id="review-sheet-title"
+                className="mt-1 truncate text-[16px] font-semibold leading-[1.2] text-[var(--text-primary)]"
+              >
+                {suggestion.roadName}
+              </h2>
+              <p className="mt-1 truncate text-[13px] font-normal leading-[1.5] text-[var(--text-secondary)]">
+                {suggestion.district}
+                {formatDistance(distanceKm)
+                  ? ` · ${formatDistance(distanceKm)}`
+                  : ""}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onBackdropClick}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)]"
+              aria-label="Close suggestion review sheet"
+            >
+              <X aria-hidden="true" className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-3">
+            <p className="text-[13px] font-semibold leading-[1.5] text-[var(--text-secondary)]">
+              {suggestionStatusDetail(suggestion)}
+            </p>
+            <p className="mt-1 text-[13px] font-normal leading-[1.5] text-[var(--text-muted)]">
+              {suggestion.nearbyConfirmCount} nearby confirmations
+            </p>
+            {suggestion.note ? (
+              <p className="mt-2 text-[13px] font-normal leading-[1.5] text-[var(--text-secondary)]">
+                {suggestion.note}
+              </p>
+            ) : null}
+          </div>
+
+          {isTurnstileEnabled ? (
+            <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-2">
+              <div ref={turnstileRef} />
+              {turnstileError ? (
+                <p className="mt-2 text-[13px] font-semibold leading-[1.5] text-[var(--danger)]">
+                  Security check failed. Try again.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => onVote("confirm", turnstileToken)}
+              disabled={!canVote}
+              className="flex min-h-[56px] items-center justify-center gap-2 rounded-xl bg-[var(--status-open)] px-4 text-[15px] font-semibold leading-[1.2] text-[#0A0A0A] active:scale-[0.985] disabled:opacity-60"
+            >
+              <CircleCheck aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
+              Confirm
+            </button>
+            <button
+              type="button"
+              onClick={() => onVote("reject", turnstileToken)}
+              disabled={!canVote}
+              className="flex min-h-[56px] items-center justify-center gap-2 rounded-xl bg-[var(--status-closed)] px-4 text-[15px] font-semibold leading-[1.2] text-white active:scale-[0.985] disabled:opacity-60"
+            >
+              <CircleX aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
+              Wrong
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MapView({
   gates,
+  suggestions,
   isLoading,
   errorMessage,
+  selectedDistrict,
   onOpenGate,
+  onSuggestGate,
+  onOpenSuggestion,
   userLocation,
   isLocating,
   onUseLocation,
 }: {
   gates: GateView[];
+  suggestions: GateSuggestionView[];
   isLoading: boolean;
   errorMessage: string;
+  selectedDistrict: string;
   onOpenGate: (gate: GateView) => void;
+  onSuggestGate: (draft: SuggestionDraft) => void;
+  onOpenSuggestion: (suggestion: GateSuggestionView) => void;
   userLocation: UserLocation | null;
   isLocating: boolean;
   onUseLocation: () => Promise<UserLocation | null>;
@@ -1293,15 +2073,22 @@ function MapView({
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const mapboxRef = useRef<typeof mapboxgl | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const draftMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const latestOnOpenGateRef = useRef(onOpenGate);
+  const latestOnOpenSuggestionRef = useRef(onOpenSuggestion);
   const didInitialFitRef = useRef(false);
   const [isMapReady, setIsMapReady] = useState(false);
+  const [isPlacingSuggestion, setIsPlacingSuggestion] = useState(false);
   const [mapError, setMapError] = useState("");
 
   useEffect(() => {
     latestOnOpenGateRef.current = onOpenGate;
   }, [onOpenGate]);
+
+  useEffect(() => {
+    latestOnOpenSuggestionRef.current = onOpenSuggestion;
+  }, [onOpenSuggestion]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1374,6 +2161,8 @@ function MapView({
       isMounted = false;
       markersRef.current.forEach((marker) => marker.remove());
       markersRef.current = [];
+      draftMarkerRef.current?.remove();
+      draftMarkerRef.current = null;
       userMarkerRef.current?.remove();
       userMarkerRef.current = null;
       mapRef.current?.remove();
@@ -1392,7 +2181,7 @@ function MapView({
     }
 
     markersRef.current.forEach((marker) => marker.remove());
-    markersRef.current = gates
+    const gateMarkers = gates
       .filter((gate) => isValidCoordinate(gate))
       .map((gate) => {
         const trust = getTrustSummary(gate);
@@ -1429,14 +2218,62 @@ function MapView({
           .setPopup(popup)
           .addTo(map);
       });
+    const suggestionMarkers = suggestions
+      .filter((suggestion) => isValidCoordinate(suggestion))
+      .map((suggestion) => {
+        const markerElement = document.createElement("button");
+        markerElement.type = "button";
+        markerElement.className = [
+          "gate-suggestion-marker",
+          suggestion.status === "community_confirmed"
+            ? "gate-suggestion-marker-confirmed"
+            : "gate-suggestion-marker-pending",
+        ].join(" ");
+        markerElement.innerHTML =
+          '<span class="gate-suggestion-marker-icon" aria-hidden="true"></span>';
+        markerElement.setAttribute(
+          "aria-label",
+          `${suggestion.roadName} ${suggestionStatusLabel(suggestion.status)}`,
+        );
+
+        const popupElement = document.createElement("button");
+        popupElement.type = "button";
+        popupElement.className = "gate-map-popup gate-suggestion-popup";
+        const distanceLabel = formatDistance(
+          getSuggestionDistance(suggestion, userLocation),
+        );
+        popupElement.innerHTML = `
+          <strong>${escapeHtml(suggestion.roadName)}</strong>
+          <span>${escapeHtml(suggestionStatusLabel(suggestion.status))}</span>
+          ${distanceLabel ? `<span>${escapeHtml(distanceLabel)}</span>` : ""}
+          <span>${escapeHtml(suggestionStatusDetail(suggestion))}</span>
+          <em>Review suggestion</em>
+        `;
+        popupElement.addEventListener("click", () => {
+          latestOnOpenSuggestionRef.current(suggestion);
+        });
+
+        const popup = new mapboxModule.Popup({
+          closeButton: false,
+          closeOnClick: true,
+          offset: 18,
+        }).setDOMContent(popupElement);
+
+        return new mapboxModule.Marker({ element: markerElement })
+          .setLngLat([suggestion.lng, suggestion.lat])
+          .setPopup(popup)
+          .addTo(map);
+      });
+
+    markersRef.current = [...gateMarkers, ...suggestionMarkers];
 
     if (!didInitialFitRef.current && !isLoading) {
       didInitialFitRef.current = true;
-      fitMapToGates(map, mapboxModule, gates);
-    } else if (gates.some(isValidCoordinate)) {
-      fitMapToGates(map, mapboxModule, gates);
+      fitMapToVisiblePoints(map, mapboxModule, gates, suggestions);
+    } else if (gates.some(isValidCoordinate) || suggestions.some(isValidCoordinate)) {
+      fitMapToVisiblePoints(map, mapboxModule, gates, suggestions);
     }
-  }, [gates, isLoading, isMapReady, userLocation]);
+  }, [gates, isLoading, isMapReady, suggestions, userLocation]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1464,6 +2301,56 @@ function MapView({
     }
   }, [gates, isLocating, isMapReady, onUseLocation]);
 
+  const startPlacingSuggestion = useCallback(() => {
+    const map = mapRef.current;
+    const mapboxModule = mapboxRef.current;
+
+    if (
+      !isMapReady ||
+      !map ||
+      !mapboxModule ||
+      selectedDistrict === "All" ||
+      isPlacingSuggestion
+    ) {
+      return;
+    }
+
+    const center = map.getCenter();
+    const markerElement = document.createElement("div");
+    markerElement.className = "gate-suggestion-draft-marker";
+    markerElement.innerHTML =
+      '<span class="gate-suggestion-marker-icon" aria-hidden="true"></span>';
+
+    draftMarkerRef.current?.remove();
+    draftMarkerRef.current = new mapboxModule.Marker({
+      element: markerElement,
+      draggable: true,
+    })
+      .setLngLat([center.lng, center.lat])
+      .addTo(map);
+    setIsPlacingSuggestion(true);
+  }, [isMapReady, isPlacingSuggestion, selectedDistrict]);
+
+  const cancelPlacingSuggestion = useCallback(() => {
+    draftMarkerRef.current?.remove();
+    draftMarkerRef.current = null;
+    setIsPlacingSuggestion(false);
+  }, []);
+
+  const useDraftSuggestionLocation = useCallback(() => {
+    const lngLat = draftMarkerRef.current?.getLngLat();
+
+    if (!lngLat) {
+      return;
+    }
+
+    onSuggestGate({
+      lat: lngLat.lat,
+      lng: lngLat.lng,
+    });
+    cancelPlacingSuggestion();
+  }, [cancelPlacingSuggestion, onSuggestGate]);
+
   return (
     <div className="relative h-[calc(100dvh-248px)] min-h-[360px] w-full overflow-hidden border-y border-[var(--border)] bg-[var(--bg-surface)] sm:h-[calc(100dvh-220px)]">
       <div ref={mapContainerRef} className="h-full w-full" />
@@ -1482,7 +2369,51 @@ function MapView({
 
       {!isLoading && !errorMessage && !mapError && gates.length === 0 ? (
         <div className="absolute inset-x-4 top-4 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 text-[14px] font-semibold leading-[1.5] text-[var(--text-secondary)]">
-          No gates found for this district
+          {suggestions.length > 0
+            ? `${suggestions.length} pending suggestions`
+            : "No gates found for this district"}
+        </div>
+      ) : null}
+
+      <div className="absolute left-4 right-4 top-4 z-10 flex items-start justify-between gap-2">
+        {isPlacingSuggestion ? (
+          <div className="rounded-xl border border-[var(--accent)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] font-semibold leading-[1.5] text-[var(--accent)] shadow-2xl">
+            Drag the yellow marker
+          </div>
+        ) : (
+          <div />
+        )}
+        <button
+          type="button"
+          onClick={startPlacingSuggestion}
+          disabled={
+            !isMapReady ||
+            selectedDistrict === "All" ||
+            isPlacingSuggestion
+          }
+          className="flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-[13px] font-semibold leading-[1.5] text-[var(--text-primary)] shadow-2xl disabled:opacity-60"
+        >
+          <MapPin aria-hidden="true" className="h-4 w-4 text-[var(--accent)]" />
+          {selectedDistrict === "All" ? "Select district" : "Suggest gate"}
+        </button>
+      </div>
+
+      {isPlacingSuggestion ? (
+        <div className="absolute inset-x-4 bottom-20 z-10 grid grid-cols-2 gap-2 sm:right-auto sm:w-[320px]">
+          <button
+            type="button"
+            onClick={cancelPlacingSuggestion}
+            className="flex min-h-11 items-center justify-center rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-[13px] font-semibold leading-[1.5] text-[var(--text-primary)] shadow-2xl"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={useDraftSuggestionLocation}
+            className="flex min-h-11 items-center justify-center rounded-xl bg-[var(--accent)] px-3 text-[13px] font-semibold leading-[1.5] text-[#0A0A0A] shadow-2xl"
+          >
+            Use location
+          </button>
         </div>
       ) : null}
 
@@ -1552,6 +2483,25 @@ function fitMapToGates(
   fitMapToCoordinates(map, mapboxModule, coordinates);
 }
 
+function fitMapToVisiblePoints(
+  map: mapboxgl.Map,
+  mapboxModule: typeof mapboxgl,
+  gates: GateView[],
+  suggestions: GateSuggestionView[],
+) {
+  const gateCoordinates = gates
+    .filter(isValidCoordinate)
+    .map((gate) => [gate.lng, gate.lat] as [number, number]);
+  const suggestionCoordinates = suggestions
+    .filter(isValidCoordinate)
+    .map((suggestion) => [suggestion.lng, suggestion.lat] as [number, number]);
+
+  fitMapToCoordinates(map, mapboxModule, [
+    ...gateCoordinates,
+    ...suggestionCoordinates,
+  ]);
+}
+
 function fitMapToCoordinates(
   map: mapboxgl.Map,
   mapboxModule: typeof mapboxgl,
@@ -1574,8 +2524,8 @@ function fitMapToCoordinates(
   });
 }
 
-function isValidCoordinate(gate: GateView) {
-  return Number.isFinite(gate.lat) && Number.isFinite(gate.lng);
+function isValidCoordinate(point: { lat: number; lng: number }) {
+  return Number.isFinite(point.lat) && Number.isFinite(point.lng);
 }
 
 function statusColor(status: GateStatus) {

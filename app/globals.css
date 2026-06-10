@@ -156,6 +156,78 @@ a:focus-visible {
   outline-offset: 3px;
 }
 
+.gate-suggestion-marker,
+.gate-suggestion-draft-marker {
+  position: relative;
+  display: flex;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 2px dashed #ffffff;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow:
+    0 0 0 4px rgba(10, 10, 10, 0.35),
+    0 8px 22px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+.gate-suggestion-marker-confirmed {
+  border-style: solid;
+  box-shadow:
+    0 0 0 4px rgba(34, 197, 94, 0.22),
+    0 8px 22px rgba(0, 0, 0, 0.35);
+}
+
+.gate-suggestion-draft-marker {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  cursor: grab;
+}
+
+.gate-suggestion-draft-marker:active {
+  cursor: grabbing;
+}
+
+.gate-suggestion-marker-icon {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.gate-suggestion-marker-icon::before,
+.gate-suggestion-marker-icon::after {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 15px;
+  border-radius: 999px;
+  background: #0a0a0a;
+  content: "";
+  transform-origin: center;
+}
+
+.gate-suggestion-marker-icon::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.gate-suggestion-marker-icon::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.gate-suggestion-marker:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .gate-user-marker {
   width: 18px;
   height: 18px;
