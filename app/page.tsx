@@ -2213,7 +2213,10 @@ function MapView({
           offset: 18,
         }).setDOMContent(popupElement);
 
-        return new mapboxModule.Marker({ element: markerElement })
+        return new mapboxModule.Marker({
+          element: markerElement,
+          anchor: "bottom",
+        })
           .setLngLat([gate.lng, gate.lat])
           .setPopup(popup)
           .addTo(map);
@@ -2259,7 +2262,10 @@ function MapView({
           offset: 18,
         }).setDOMContent(popupElement);
 
-        return new mapboxModule.Marker({ element: markerElement })
+        return new mapboxModule.Marker({
+          element: markerElement,
+          anchor: "bottom",
+        })
           .setLngLat([suggestion.lng, suggestion.lat])
           .setPopup(popup)
           .addTo(map);
@@ -2325,6 +2331,7 @@ function MapView({
     draftMarkerRef.current = new mapboxModule.Marker({
       element: markerElement,
       draggable: true,
+      anchor: "bottom",
     })
       .setLngLat([center.lng, center.lat])
       .addTo(map);
