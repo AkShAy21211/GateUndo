@@ -92,63 +92,88 @@ a:focus-visible {
 .gate-map-marker {
   position: relative;
   display: flex;
-  width: 34px;
-  height: 42px;
-  min-width: 34px;
-  min-height: 42px;
+  width: 40px;
+  height: 50px;
+  min-width: 40px;
+  min-height: 50px;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 2px solid #ffffff;
-  border-radius: 999px 999px 999px 6px;
-  box-shadow:
-    0 0 0 4px rgba(10, 10, 10, 0.35),
-    0 8px 22px rgba(0, 0, 0, 0.35);
+  border: 0;
+  background: transparent;
   cursor: pointer;
-  transform: rotate(-45deg);
+  --marker-color: var(--status-unknown);
+  --marker-icon-color: #ffffff;
 }
 
 .gate-map-marker-open {
-  background: var(--status-open);
+  --marker-color: var(--status-open);
 }
 
 .gate-map-marker-closed {
-  background: var(--status-closed);
+  --marker-color: var(--status-closed);
 }
 
 .gate-map-marker-unknown {
-  background: var(--status-unknown);
+  --marker-color: var(--status-unknown);
+}
+
+.gate-map-marker-pin {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  display: flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: var(--marker-color);
+  box-shadow:
+    0 0 0 4px rgba(10, 10, 10, 0.35),
+    0 8px 22px rgba(0, 0, 0, 0.35);
+  transform: translateX(-50%);
+}
+
+.gate-map-marker-pin::before,
+.gate-map-marker-pin::after {
+  position: absolute;
+  left: 50%;
+  width: 0;
+  height: 0;
+  content: "";
+  transform: translateX(-50%);
+}
+
+.gate-map-marker-pin::before {
+  bottom: -14px;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-top: 15px solid #ffffff;
+}
+
+.gate-map-marker-pin::after {
+  bottom: -10px;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 12px solid var(--marker-color);
 }
 
 .gate-map-marker-icon {
-  position: relative;
   display: block;
   width: 18px;
   height: 18px;
-  border-top: 3px solid #ffffff;
-  border-bottom: 3px solid #ffffff;
-  transform: rotate(45deg);
-}
-
-.gate-map-marker-icon::before,
-.gate-map-marker-icon::after {
-  position: absolute;
-  top: 50%;
-  width: 3px;
-  height: 18px;
-  border-radius: 999px;
-  background: #ffffff;
-  content: "";
-}
-
-.gate-map-marker-icon::before {
-  left: 4px;
-  transform: translateY(-50%);
-}
-
-.gate-map-marker-icon::after {
-  right: 4px;
-  transform: translateY(-50%);
+  color: var(--marker-icon-color);
+  background:
+    linear-gradient(currentColor, currentColor) 3px 0 / 3px 18px no-repeat,
+    linear-gradient(currentColor, currentColor) 12px 0 / 3px 18px no-repeat,
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 3px,
+      currentColor 3px 5px,
+      transparent 5px 8px
+    );
 }
 
 .gate-map-marker:focus-visible {
@@ -160,35 +185,29 @@ a:focus-visible {
 .gate-suggestion-draft-marker {
   position: relative;
   display: flex;
-  width: 34px;
-  height: 42px;
-  min-width: 34px;
-  min-height: 42px;
+  width: 40px;
+  height: 50px;
+  min-width: 40px;
+  min-height: 50px;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 2px dashed #ffffff;
-  border-radius: 999px 999px 999px 6px;
-  background: var(--accent);
-  box-shadow:
-    0 0 0 4px rgba(10, 10, 10, 0.35),
-    0 8px 22px rgba(0, 0, 0, 0.35);
+  border: 0;
+  background: transparent;
   cursor: pointer;
-  transform: rotate(-45deg);
+  --marker-color: var(--accent);
+  --marker-icon-color: #0a0a0a;
 }
 
 .gate-suggestion-marker-confirmed {
-  border-style: solid;
-  box-shadow:
-    0 0 0 4px rgba(34, 197, 94, 0.22),
-    0 8px 22px rgba(0, 0, 0, 0.35);
+  --marker-color: #fde047;
 }
 
 .gate-suggestion-draft-marker {
-  width: 38px;
-  height: 46px;
-  min-width: 38px;
-  min-height: 46px;
+  width: 44px;
+  height: 54px;
+  min-width: 44px;
+  min-height: 54px;
   cursor: grab;
 }
 
@@ -196,35 +215,66 @@ a:focus-visible {
   cursor: grabbing;
 }
 
+.gate-suggestion-marker-pin {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  display: flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed #ffffff;
+  border-radius: 999px;
+  background: var(--marker-color);
+  box-shadow:
+    0 0 0 4px rgba(10, 10, 10, 0.35),
+    0 8px 22px rgba(0, 0, 0, 0.35);
+  transform: translateX(-50%);
+}
+
+.gate-suggestion-marker-confirmed .gate-suggestion-marker-pin {
+  border-style: solid;
+}
+
+.gate-suggestion-marker-pin::before,
+.gate-suggestion-marker-pin::after {
+  position: absolute;
+  left: 50%;
+  width: 0;
+  height: 0;
+  content: "";
+  transform: translateX(-50%);
+}
+
+.gate-suggestion-marker-pin::before {
+  bottom: -14px;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-top: 15px solid #ffffff;
+}
+
+.gate-suggestion-marker-pin::after {
+  bottom: -10px;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 12px solid var(--marker-color);
+}
+
 .gate-suggestion-marker-icon {
-  position: relative;
   display: block;
   width: 18px;
   height: 18px;
-  border-top: 3px solid #0a0a0a;
-  border-bottom: 3px solid #0a0a0a;
-  transform: rotate(45deg);
-}
-
-.gate-suggestion-marker-icon::before,
-.gate-suggestion-marker-icon::after {
-  position: absolute;
-  top: 50%;
-  width: 3px;
-  height: 18px;
-  border-radius: 999px;
-  background: #0a0a0a;
-  content: "";
-}
-
-.gate-suggestion-marker-icon::before {
-  left: 4px;
-  transform: translateY(-50%);
-}
-
-.gate-suggestion-marker-icon::after {
-  right: 4px;
-  transform: translateY(-50%);
+  color: var(--marker-icon-color);
+  background:
+    linear-gradient(currentColor, currentColor) 3px 0 / 3px 18px no-repeat,
+    linear-gradient(currentColor, currentColor) 12px 0 / 3px 18px no-repeat,
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 3px,
+      currentColor 3px 5px,
+      transparent 5px 8px
+    );
 }
 
 .gate-suggestion-marker:focus-visible {

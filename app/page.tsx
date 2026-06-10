@@ -2138,6 +2138,7 @@ function MapView({
 
       map.on("load", () => {
         applyRailUndoMapTheme(map);
+        window.requestAnimationFrame(() => map.resize());
 
         if (isMounted) {
           setIsMapReady(true);
@@ -2189,7 +2190,7 @@ function MapView({
         markerElement.type = "button";
         markerElement.className = `gate-map-marker gate-map-marker-${gate.status}`;
         markerElement.innerHTML =
-          '<span class="gate-map-marker-icon" aria-hidden="true"></span>';
+          '<span class="gate-map-marker-pin"><span class="gate-map-marker-icon" aria-hidden="true"></span></span>';
         markerElement.setAttribute("aria-label", `${gate.name} ${gate.status}`);
 
         const popupElement = document.createElement("button");
@@ -2233,7 +2234,7 @@ function MapView({
             : "gate-suggestion-marker-pending",
         ].join(" ");
         markerElement.innerHTML =
-          '<span class="gate-suggestion-marker-icon" aria-hidden="true"></span>';
+          '<span class="gate-suggestion-marker-pin"><span class="gate-suggestion-marker-icon" aria-hidden="true"></span></span>';
         markerElement.setAttribute(
           "aria-label",
           `${suggestion.roadName} ${suggestionStatusLabel(suggestion.status)}`,
@@ -2283,6 +2284,21 @@ function MapView({
 
   useEffect(() => {
     const map = mapRef.current;
+
+    if (!isMapReady || !map) {
+      return;
+    }
+
+    const firstFrameId = window.requestAnimationFrame(() => {
+      map.resize();
+      window.requestAnimationFrame(() => map.resize());
+    });
+
+    return () => window.cancelAnimationFrame(firstFrameId);
+  }, [isMapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
     const mapboxModule = mapboxRef.current;
 
     if (!isMapReady || !map || !mapboxModule || !userLocation) {
@@ -2325,7 +2341,7 @@ function MapView({
     const markerElement = document.createElement("div");
     markerElement.className = "gate-suggestion-draft-marker";
     markerElement.innerHTML =
-      '<span class="gate-suggestion-marker-icon" aria-hidden="true"></span>';
+      '<span class="gate-suggestion-marker-pin"><span class="gate-suggestion-marker-icon" aria-hidden="true"></span></span>';
 
     draftMarkerRef.current?.remove();
     draftMarkerRef.current = new mapboxModule.Marker({
