@@ -1849,7 +1849,7 @@ export default function Home() {
             </div>
             <div className="min-w-0">
               <div className="truncate text-[20px] font-bold leading-[1.2] text-[var(--text-primary)]">
-                RailUndo
+                GateUndo
               </div>
               <p className="truncate text-[13px] font-normal leading-[1.5] text-[var(--text-secondary)]">
                 Kerala Railway Gate Status - Crowdsourced Updates

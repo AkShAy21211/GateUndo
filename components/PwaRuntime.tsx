@@ -93,7 +93,7 @@ export default function PwaRuntime() {
   return (
     <div className="fixed inset-x-4 bottom-[calc(16px+env(safe-area-inset-bottom))] z-[80] mx-auto flex max-w-[460px] items-center gap-3 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] p-3 shadow-2xl">
       <p className="min-w-0 flex-1 text-[13px] font-semibold leading-[1.5] text-[var(--text-primary)]">
-        Install RailUndo - get gate alerts faster
+        Install GateUndo - get gate alerts faster
       </p>
       <button
         type="button"

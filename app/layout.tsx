@@ -4,13 +4,13 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "RailUndo",
+  title: "GateUndo",
   description: "Live railway gate status for Kerala",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "RailUndo",
+    title: "GateUndo",
   },
   other: {
     "mobile-web-app-capable": "yes",

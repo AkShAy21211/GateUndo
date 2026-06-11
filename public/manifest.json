@@ -1,6 +1,6 @@
 {
-  "name": "RailUndo",
-  "short_name": "RailUndo",
+  "name": "GateUndo",
+  "short_name": "GateUndo",
   "description": "Live railway gate status for Kerala",
   "theme_color": "#064E3B",
   "background_color": "#FFFFFF",
