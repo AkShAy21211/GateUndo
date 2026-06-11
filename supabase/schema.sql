@@ -6,6 +6,16 @@ CREATE TABLE gates (
   lat DOUBLE PRECISION NOT NULL,
   lng DOUBLE PRECISION NOT NULL,
   road_name TEXT,
+  nearest_station_name TEXT
+    CHECK (
+      nearest_station_name IS NULL
+      OR char_length(trim(nearest_station_name)) BETWEEN 2 AND 80
+    ),
+  nearest_station_code TEXT
+    CHECK (
+      nearest_station_code IS NULL
+      OR nearest_station_code = upper(trim(nearest_station_code))
+    ),
   is_verified BOOLEAN NOT NULL DEFAULT false,
   verified_at TIMESTAMPTZ,
   verification_note TEXT,
@@ -521,6 +531,8 @@ SELECT
   gates.lat,
   gates.lng,
   gates.road_name,
+  gates.nearest_station_name,
+  gates.nearest_station_code,
   gates.is_verified,
   gates.verified_at,
   gates.verification_note,
@@ -615,6 +627,8 @@ SELECT
   gates.id,
   gates.name,
   gates.district,
+  gates.nearest_station_name,
+  gates.nearest_station_code,
   gates.is_verified,
   gates.verification_note,
   gates.current_status,

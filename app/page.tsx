@@ -59,6 +59,8 @@ type GateStatusRow = {
   lat: number;
   lng: number;
   road_name: string | null;
+  nearest_station_name: string | null;
+  nearest_station_code: string | null;
   is_verified: boolean;
   verified_at: string | null;
   verification_note: string | null;
@@ -86,6 +88,8 @@ type GateView = {
   lat: number;
   lng: number;
   roadName: string;
+  nearestStationName: string | null;
+  nearestStationCode: string | null;
   isVerified: boolean;
   verifiedAt: string | null;
   verificationNote: string | null;
@@ -243,7 +247,8 @@ const GATE_CACHE_KEY = "railundo_gate_cache";
 const SUGGESTION_CACHE_KEY = "railundo_suggestion_cache";
 const BETA_BANNER_DISMISSED_UNTIL_KEY = "gateundo_beta_banner_dismissed_until";
 const BETA_BANNER_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
-const DATA_CACHE_VERSION = 1;
+const DATA_CACHE_VERSION = 2;
+const TRAIN_CHECK_URL = "https://enquiry.indianrail.gov.in/";
 const TURNSTILE_SCRIPT_ID = "railundo-turnstile-script";
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 const TURNSTILE_HELP_TEXT =
@@ -671,6 +676,8 @@ function normalizeGate(gate: GateStatusRow): GateView {
     lat: gate.lat,
     lng: gate.lng,
     roadName: gate.road_name ?? "Road name unavailable",
+    nearestStationName: gate.nearest_station_name,
+    nearestStationCode: gate.nearest_station_code,
     isVerified: gate.is_verified,
     verifiedAt: gate.verified_at,
     verificationNote: gate.verification_note,
@@ -761,6 +768,24 @@ function formatDistance(distanceKm: number | null) {
   }
 
   return `${Math.round(distanceKm)} km away`;
+}
+
+function getStationLabel(gate: GateView) {
+  if (!gate.nearestStationName || !gate.nearestStationCode) {
+    return "";
+  }
+
+  return `${gate.nearestStationName} (${gate.nearestStationCode})`;
+}
+
+function getTrainActivityHint(gate: GateView) {
+  const stationLabel = getStationLabel(gate);
+
+  if (!stationLabel) {
+    return "";
+  }
+
+  return `Train activity near ${stationLabel} may affect this gate`;
 }
 
 function statusStyles(status: GateStatus): StatusView {
@@ -1095,6 +1120,8 @@ export default function Home() {
               "lat",
               "lng",
               "road_name",
+              "nearest_station_name",
+              "nearest_station_code",
               "is_verified",
               "verified_at",
               "verification_note",
@@ -2275,6 +2302,7 @@ function GateCard({
   const verification = getVerificationSummary(gate);
   const VerificationIcon = verification.Icon;
   const distanceLabel = formatDistance(distanceKm);
+  const trainActivityHint = getTrainActivityHint(gate);
 
   return (
     <button
@@ -2305,6 +2333,15 @@ function GateCard({
                   {distanceLabel ? ` · ${distanceLabel}` : ""}
                 </span>
               </div>
+              {trainActivityHint ? (
+                <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-[1.5] text-[var(--accent)]">
+                  <TrainFront
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 shrink-0"
+                  />
+                  <span className="truncate">{trainActivityHint}</span>
+                </div>
+              ) : null}
             </div>
             <span
               className={`inline-flex max-w-[132px] shrink-0 items-center gap-1 rounded-full px-[10px] py-1 text-[12px] font-bold leading-[1.2] sm:max-w-none sm:text-[13px] ${status.badge}`}
@@ -2376,6 +2413,7 @@ function ReportSheet({
   const TrustIcon = trust.Icon;
   const verification = getVerificationSummary(gate);
   const VerificationIcon = verification.Icon;
+  const trainActivityHint = getTrainActivityHint(gate);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   const canReport =
@@ -2437,6 +2475,15 @@ function ReportSheet({
                   {verification.label}{" \u00b7 "}{verification.detail}
                 </span>
               </p>
+              {trainActivityHint ? (
+                <p className="mt-1 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5] text-[var(--accent)]">
+                  <TrainFront
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 shrink-0"
+                  />
+                  <span>{trainActivityHint}</span>
+                </p>
+              ) : null}
               <p className="mt-1 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5] text-[var(--text-muted)]">
                 <Info aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
                 <span>
@@ -2459,6 +2506,18 @@ function ReportSheet({
             <div className="mb-3">
               <TurnstileCheck onTokenChange={setTurnstileToken} />
             </div>
+          ) : null}
+
+          {trainActivityHint ? (
+            <a
+              href={TRAIN_CHECK_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="mb-3 flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] px-4 text-[14px] font-semibold leading-[1.2] text-[var(--accent)] active:scale-[0.985]"
+            >
+              <TrainFront aria-hidden="true" className="h-4 w-4" />
+              Check trains near {gate.nearestStationCode}
+            </a>
           ) : null}
 
           <div className="grid grid-cols-2 gap-2">
@@ -3002,6 +3061,7 @@ function MapView({
         popupElement.type = "button";
         popupElement.className = "gate-map-popup";
         const distanceLabel = formatDistance(getGateDistance(gate, userLocation));
+        const trainActivityHint = getTrainActivityHint(gate);
         popupElement.innerHTML = `
           <strong>${escapeHtml(gate.name)}</strong>
           <span>${statusStyles(gate.status).label} · ${escapeHtml(formatLastReported(gate.lastReportedAt))}</span>
@@ -3009,6 +3069,7 @@ function MapView({
           <span>${escapeHtml(trust.label)} · ${escapeHtml(trust.detail)}</span>
           <span>${escapeHtml(verification.label)} · ${escapeHtml(verification.detail)}</span>
           <span>Last community report · always obey physical signals</span>
+          ${trainActivityHint ? `<span>${escapeHtml(trainActivityHint)}</span>` : ""}
           <em>Report gate status</em>
         `;
         popupElement.addEventListener("click", () => {
