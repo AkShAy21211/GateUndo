@@ -1,38 +1,55 @@
 # GateUndo
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+GateUndo is a no-login Kerala railway gate status app. It shows last community reports, nearby trust signals, pending gate suggestions, and a Mapbox gate view.
 
-## Getting Started
+## Safety Position
 
-First, run the development server:
+GateUndo must never frame a gate as safe to cross. Every status is only a last community report. Users must always obey physical railway signals, barriers, police, and railway staff.
+
+Status wording should stay conservative:
+
+- Last report open
+- Last report closed
+- No recent report
+
+Avoid wording like safe, clear, proceed, or gate is open.
+
+## Current MVP
+
+- Mobile-first gate list and map
+- District filters
+- One-tap anonymous reports
+- Nearby GPS trust signal
+- Recency-weighted status decay
+- Status instability warning
+- Gate suggestions and community confirmation
+- Offline saved data cache
+- PWA install support
+- DPDP/privacy notes at `/privacy`
+
+## Later Roadmap
+
+Route-level intelligence is intentionally deferred until the core trust layer is stable. The future version should answer "will I be delayed on my route?" instead of only "what is gate X's last report?"
+
+Possible route mode:
+
+- Save a commute route
+- Show gates near that route
+- Highlight possible delay points
+- Open the app directly to saved route status
+- Keep the same conservative safety language
+
+## Local Development
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Checks
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run lint
+npx tsc --noEmit --pretty false
+```

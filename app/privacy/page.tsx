@@ -5,6 +5,7 @@ import {
   LocateFixed,
   ShieldCheck,
   Smartphone,
+  TriangleAlert,
 } from "lucide-react";
 
 const privacySections = [
@@ -95,6 +96,20 @@ export default function PrivacyPage() {
               </article>
             );
           })}
+        </section>
+
+        <section className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-4">
+          <div className="flex items-center gap-2 text-[var(--danger)]">
+            <TriangleAlert aria-hidden="true" className="h-5 w-5" />
+            <h2 className="text-[16px] font-semibold leading-[1.2]">
+              Safety notice
+            </h2>
+          </div>
+          <p className="mt-3 text-[13px] font-normal leading-[1.5] text-[var(--text-secondary)]">
+            GateUndo shows last community reports only. It must never be used
+            as permission to proceed. Always obey railway signals, barriers,
+            police, and on-ground railway staff.
+          </p>
         </section>
 
         <section className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-4">

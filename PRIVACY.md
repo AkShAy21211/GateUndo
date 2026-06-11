@@ -4,6 +4,10 @@ Last updated: June 11, 2026
 
 GateUndo is a no-login public utility for checking community-reported railway gate status. The app is designed to collect the minimum data needed to reduce spam, protect trust, and show useful nearby gates.
 
+## Safety Notice
+
+GateUndo shows last community reports only. It does not decide whether a crossing is safe. Always obey physical railway signals, barriers, police, and railway staff.
+
 ## What We Collect
 
 - Gate reports: gate id, reported status, server timestamp, and a short-lived anonymous reporter hash.

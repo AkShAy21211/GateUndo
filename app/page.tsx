@@ -763,7 +763,7 @@ function statusStyles(status: GateStatus): StatusView {
     return {
       dot: "bg-[var(--status-open)]",
       badge: "bg-[var(--status-open-bg)] text-[var(--status-open)]",
-      label: "REPORTED OPEN",
+      label: "LAST REPORT OPEN",
       Icon: Circle,
     };
   }
@@ -772,7 +772,7 @@ function statusStyles(status: GateStatus): StatusView {
     return {
       dot: "bg-[var(--status-closed)]",
       badge: "bg-[var(--status-closed-bg)] text-[var(--status-closed)]",
-      label: "REPORTED CLOSED",
+      label: "LAST REPORT CLOSED",
       Icon: Circle,
     };
   }
@@ -780,7 +780,7 @@ function statusStyles(status: GateStatus): StatusView {
   return {
     dot: "bg-[var(--status-unknown)]",
     badge: "bg-[var(--status-unknown-bg)] text-[var(--status-unknown)]",
-    label: "NO RECENT SIGNAL",
+    label: "NO RECENT REPORT",
     Icon: CircleDashed,
   };
 }
@@ -2220,7 +2220,9 @@ function GateCard({
           </p>
           <p className="mt-1 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5] text-[var(--text-muted)]">
             <Info aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">Community report only · expires after 7 min</span>
+            <span>
+              Last community report{" \u00b7 "}always obey physical signals
+            </span>
           </p>
           <p
             className={`mt-1 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5] ${trust.className}`}
@@ -2330,8 +2332,8 @@ function ReportSheet({
               </p>
               <p className="mt-1 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5] text-[var(--text-muted)]">
                 <Info aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">
-                  Community report only. Expires after 7 min. Obey physical signals.
+                <span>
+                  Last community report only. Always obey physical signals.
                 </span>
               </p>
             </div>
@@ -2899,7 +2901,7 @@ function MapView({
           ${distanceLabel ? `<span>${escapeHtml(distanceLabel)}</span>` : ""}
           <span>${escapeHtml(trust.label)} · ${escapeHtml(trust.detail)}</span>
           <span>${escapeHtml(verification.label)} · ${escapeHtml(verification.detail)}</span>
-          <span>Community report only · expires after 7 min</span>
+          <span>Last community report · always obey physical signals</span>
           <em>Report gate status</em>
         `;
         popupElement.addEventListener("click", () => {
