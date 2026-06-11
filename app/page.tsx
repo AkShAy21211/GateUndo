@@ -185,6 +185,18 @@ type GateSuggestionFunctionData = {
   suggestion?: GateSuggestionRow;
 };
 
+type GateCachePayload = {
+  version: number;
+  cachedAt: string;
+  gates: GateView[];
+};
+
+type SuggestionCachePayload = {
+  version: number;
+  cachedAt: string;
+  suggestions: GateSuggestionView[];
+};
+
 type TurnstileApi = {
   render: (
     container: HTMLElement,
@@ -214,6 +226,9 @@ const SUPABASE_TIMEOUT_MS = 5000;
 const REPORT_NEARBY_DISTANCE_KM = 0.2;
 const DEVICE_ID_KEY = "railundo_device_id";
 const SUGGESTION_VOTES_KEY = "railundo_suggestion_votes";
+const GATE_CACHE_KEY = "railundo_gate_cache";
+const SUGGESTION_CACHE_KEY = "railundo_suggestion_cache";
+const DATA_CACHE_VERSION = 1;
 const TURNSTILE_SCRIPT_ID = "railundo-turnstile-script";
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 const TURNSTILE_HELP_TEXT =
@@ -339,6 +354,103 @@ function storeSuggestionVote(suggestionId: string, vote: SuggestionVote) {
       [suggestionId]: vote,
     };
   }
+}
+
+function readGateCache() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const cachedValue = window.localStorage.getItem(GATE_CACHE_KEY);
+
+    if (!cachedValue) {
+      return null;
+    }
+
+    const parsedCache = JSON.parse(cachedValue) as Partial<GateCachePayload>;
+
+    if (
+      parsedCache.version !== DATA_CACHE_VERSION ||
+      typeof parsedCache.cachedAt !== "string" ||
+      Number.isNaN(new Date(parsedCache.cachedAt).getTime()) ||
+      !Array.isArray(parsedCache.gates)
+    ) {
+      return null;
+    }
+
+    return {
+      version: DATA_CACHE_VERSION,
+      cachedAt: parsedCache.cachedAt,
+      gates: parsedCache.gates,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeGateCache(gates: GateView[], cachedAt: Date) {
+  try {
+    window.localStorage.setItem(
+      GATE_CACHE_KEY,
+      JSON.stringify({
+        version: DATA_CACHE_VERSION,
+        cachedAt: cachedAt.toISOString(),
+        gates,
+      } satisfies GateCachePayload),
+    );
+  } catch {}
+}
+
+function readSuggestionCache() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const cachedValue = window.localStorage.getItem(SUGGESTION_CACHE_KEY);
+
+    if (!cachedValue) {
+      return null;
+    }
+
+    const parsedCache = JSON.parse(
+      cachedValue,
+    ) as Partial<SuggestionCachePayload>;
+
+    if (
+      parsedCache.version !== DATA_CACHE_VERSION ||
+      typeof parsedCache.cachedAt !== "string" ||
+      Number.isNaN(new Date(parsedCache.cachedAt).getTime()) ||
+      !Array.isArray(parsedCache.suggestions)
+    ) {
+      return null;
+    }
+
+    return {
+      version: DATA_CACHE_VERSION,
+      cachedAt: parsedCache.cachedAt,
+      suggestions: parsedCache.suggestions,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeSuggestionCache(
+  suggestions: GateSuggestionView[],
+  cachedAt: Date,
+) {
+  try {
+    window.localStorage.setItem(
+      SUGGESTION_CACHE_KEY,
+      JSON.stringify({
+        version: DATA_CACHE_VERSION,
+        cachedAt: cachedAt.toISOString(),
+        suggestions,
+      } satisfies SuggestionCachePayload),
+    );
+  } catch {}
 }
 
 function loadTurnstileScript() {
@@ -774,10 +886,12 @@ function getVerificationSummary(gate: GateView): VerificationView {
 
 function getHeaderStatus({
   isOnline,
+  isShowingCachedData,
   lastUpdatedAt,
   currentTime,
 }: {
   isOnline: boolean;
+  isShowingCachedData: boolean;
   lastUpdatedAt: Date | null;
   currentTime: number;
 }): HeaderStatus {
@@ -788,6 +902,16 @@ function getHeaderStatus({
       className: "text-[var(--status-closed)]",
       dotClassName: "bg-[var(--status-closed)]",
       Icon: WifiOff,
+    };
+  }
+
+  if (isShowingCachedData && lastUpdatedAt) {
+    return {
+      label: "SAVED",
+      detail: formatUpdatedAt(lastUpdatedAt, currentTime),
+      className: "text-[var(--accent)]",
+      dotClassName: "bg-[var(--accent)]",
+      Icon: Info,
     };
   }
 
@@ -874,6 +998,7 @@ export default function Home() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [isOnline, setIsOnline] = useState(true);
+  const [isShowingCachedData, setIsShowingCachedData] = useState(false);
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [isSubmittingSuggestion, setIsSubmittingSuggestion] = useState(false);
   const [isVotingSuggestion, setIsVotingSuggestion] = useState(false);
@@ -885,6 +1010,7 @@ export default function Home() {
   const isVotingSuggestionRef = useRef(false);
   const headerStatus = getHeaderStatus({
     isOnline,
+    isShowingCachedData,
     lastUpdatedAt,
     currentTime,
   });
@@ -892,6 +1018,21 @@ export default function Home() {
 
   const fetchGates = useCallback(async () => {
     setErrorMessage("");
+
+    const restoreCachedGates = () => {
+      const cachedGates = readGateCache();
+
+      if (!cachedGates) {
+        return false;
+      }
+
+      setGates(cachedGates.gates);
+      setLastUpdatedAt(new Date(cachedGates.cachedAt));
+      setCurrentTime(Date.now());
+      setIsShowingCachedData(true);
+      setIsLoading(false);
+      return true;
+    };
 
     let result:
       | {
@@ -932,6 +1073,10 @@ export default function Home() {
           .order("name", { ascending: true }),
       );
     } catch {
+      if (restoreCachedGates()) {
+        return false;
+      }
+
       setErrorMessage("Something went wrong. Try again.");
       setIsLoading(false);
       return false;
@@ -940,19 +1085,41 @@ export default function Home() {
     const { data, error } = result;
 
     if (error) {
+      if (restoreCachedGates()) {
+        return false;
+      }
+
       setErrorMessage("Something went wrong. Try again.");
       setIsLoading(false);
       return false;
     }
 
-    setGates(((data ?? []) as unknown as GateStatusRow[]).map(normalizeGate));
-    setLastUpdatedAt(new Date());
+    const updatedAt = new Date();
+    const nextGates = ((data ?? []) as unknown as GateStatusRow[]).map(
+      normalizeGate,
+    );
+
+    setGates(nextGates);
+    writeGateCache(nextGates, updatedAt);
+    setLastUpdatedAt(updatedAt);
     setCurrentTime(Date.now());
+    setIsShowingCachedData(false);
     setIsLoading(false);
     return true;
   }, []);
 
   const fetchGateSuggestions = useCallback(async () => {
+    const restoreCachedSuggestions = () => {
+      const cachedSuggestions = readSuggestionCache();
+
+      if (!cachedSuggestions) {
+        return false;
+      }
+
+      setSuggestions(cachedSuggestions.suggestions);
+      return true;
+    };
+
     let result:
       | {
           data: unknown[] | null;
@@ -984,25 +1151,44 @@ export default function Home() {
           .order("updated_at", { ascending: false }),
       );
     } catch {
+      restoreCachedSuggestions();
       return false;
     }
 
     const { data, error } = result;
 
     if (error) {
+      restoreCachedSuggestions();
       return false;
     }
 
-    setSuggestions(
-      ((data ?? []) as unknown as GateSuggestionRow[]).map(
-        normalizeSuggestion,
-      ),
+    const nextSuggestions = ((data ?? []) as unknown as GateSuggestionRow[]).map(
+      normalizeSuggestion,
     );
+
+    setSuggestions(nextSuggestions);
+    writeSuggestionCache(nextSuggestions, new Date());
     return true;
   }, []);
 
   useEffect(() => {
     setIsOnline(window.navigator.onLine);
+
+    const cachedGates = readGateCache();
+    const cachedSuggestions = readSuggestionCache();
+
+    if (cachedGates) {
+      setGates(cachedGates.gates);
+      setLastUpdatedAt(new Date(cachedGates.cachedAt));
+      setCurrentTime(Date.now());
+      setIsShowingCachedData(true);
+      setIsLoading(false);
+    }
+
+    if (cachedSuggestions) {
+      setSuggestions(cachedSuggestions.suggestions);
+    }
+
     fetchGates();
     fetchGateSuggestions();
     const intervalId = window.setInterval(() => {
@@ -1328,14 +1514,19 @@ export default function Home() {
         );
       } else if (acceptedReportAt) {
         setGates((currentGates) =>
-          currentGates.map((gate) =>
-            gate.id === gateId
-              ? {
-                  ...gate,
-                  lastReportedAt: acceptedReportAt,
-                }
-              : gate,
-          ),
+          {
+            const nextGates = currentGates.map((gate) =>
+              gate.id === gateId
+                ? {
+                    ...gate,
+                    lastReportedAt: acceptedReportAt,
+                  }
+                : gate,
+            );
+
+            writeGateCache(nextGates, new Date());
+            return nextGates;
+          },
         );
       }
 
@@ -1416,12 +1607,17 @@ export default function Home() {
       }
 
       const nextSuggestion = normalizeSuggestion(acceptedSuggestion);
-      setSuggestions((currentSuggestions) => [
-        nextSuggestion,
-        ...currentSuggestions.filter(
-          (suggestion) => suggestion.id !== nextSuggestion.id,
-        ),
-      ]);
+      setSuggestions((currentSuggestions) => {
+        const nextSuggestions = [
+          nextSuggestion,
+          ...currentSuggestions.filter(
+            (suggestion) => suggestion.id !== nextSuggestion.id,
+          ),
+        ];
+
+        writeSuggestionCache(nextSuggestions, new Date());
+        return nextSuggestions;
+      });
       closeSheet();
       setToastMessage("Gate suggestion added for review.");
       isSubmittingSuggestionRef.current = false;
@@ -1486,11 +1682,14 @@ export default function Home() {
       }
 
       const nextSuggestion = normalizeSuggestion(acceptedSuggestion);
-      setSuggestions((currentSuggestions) =>
-        currentSuggestions.map((suggestion) =>
+      setSuggestions((currentSuggestions) => {
+        const nextSuggestions = currentSuggestions.map((suggestion) =>
           suggestion.id === nextSuggestion.id ? nextSuggestion : suggestion,
-        ),
-      );
+        );
+
+        writeSuggestionCache(nextSuggestions, new Date());
+        return nextSuggestions;
+      });
       setSuggestionVotes(storeSuggestionVote(nextSuggestion.id, vote));
       setSelectedSuggestion(nextSuggestion);
       setToastMessage(
@@ -1635,6 +1834,15 @@ export default function Home() {
               })}
             </div>
           </section>
+
+          {isShowingCachedData && lastUpdatedAt ? (
+            <div className="mb-4 flex min-h-11 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] px-3 text-[13px] font-semibold leading-[1.5] text-[var(--accent)]">
+              <Info aria-hidden="true" className="h-4 w-4 shrink-0" />
+              <span className="truncate">
+                Showing saved data - {formatUpdatedAt(lastUpdatedAt, currentTime)}
+              </span>
+            </div>
+          ) : null}
         </div>
 
         {viewMode === "list" ? (
