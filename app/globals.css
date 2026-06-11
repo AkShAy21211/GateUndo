@@ -125,6 +125,10 @@ a:focus-visible {
   --marker-color: var(--status-unknown);
 }
 
+.gate-map-marker-unverified .gate-map-marker-pin {
+  border-style: dashed;
+}
+
 .gate-map-marker-pin {
   position: absolute;
   left: 50%;

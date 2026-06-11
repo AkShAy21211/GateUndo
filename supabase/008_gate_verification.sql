@@ -1,5 +1,13 @@
--- Trusted current gate status: one row per gate, calculated in Postgres.
--- Run this after 002_edge_report_rate_limit.sql in the Supabase SQL editor.
+-- Gate coordinate verification. Unverified gates stay visible as provisional,
+-- but the app must not present them as verified official coordinates.
+
+ALTER TABLE gates
+  ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS verification_note TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_gates_is_verified_district
+  ON gates(is_verified, district, name);
 
 DROP VIEW IF EXISTS gate_statuses;
 
@@ -38,11 +46,11 @@ LEFT JOIN LATERAL (
     ) AS recent_reports,
     COUNT(*) FILTER (
       WHERE reports.reported_at >= now() - INTERVAL '10 minutes'
-    AND reports.status = 'open'
+        AND reports.status = 'open'
     ) AS recent_open_reports,
     COUNT(*) FILTER (
       WHERE reports.reported_at >= now() - INTERVAL '10 minutes'
-    AND reports.status = 'closed'
+        AND reports.status = 'closed'
     ) AS recent_closed_reports,
     MAX(reports.reported_at) AS last_reported_at
   FROM reports

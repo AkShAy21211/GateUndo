@@ -6,6 +6,9 @@ CREATE TABLE gates (
   lat DOUBLE PRECISION NOT NULL,
   lng DOUBLE PRECISION NOT NULL,
   road_name TEXT,
+  is_verified BOOLEAN NOT NULL DEFAULT false,
+  verified_at TIMESTAMPTZ,
+  verification_note TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -75,6 +78,7 @@ CREATE INDEX idx_reports_gate_id_reported_at ON reports(gate_id, reported_at DES
 CREATE INDEX idx_reports_gate_reporter_recent ON reports(gate_id, reporter_hash, reported_at DESC)
   WHERE reporter_hash IS NOT NULL;
 CREATE INDEX idx_report_events_created_at ON report_events(created_at DESC);
+CREATE INDEX idx_gates_is_verified_district ON gates(is_verified, district, name);
 CREATE INDEX idx_gate_suggestions_status_district
   ON gate_suggestions(status, district, created_at DESC);
 CREATE INDEX idx_gate_suggestions_location ON gate_suggestions(lat, lng);
@@ -245,6 +249,9 @@ SELECT
   gates.lat,
   gates.lng,
   gates.road_name,
+  gates.is_verified,
+  gates.verified_at,
+  gates.verification_note,
   COALESCE(report_counts.total_reports, 0)::INTEGER AS report_count,
   COALESCE(report_counts.recent_reports, 0)::INTEGER AS recent_report_count,
   COALESCE(report_counts.recent_open_reports, 0)::INTEGER AS recent_open_count,

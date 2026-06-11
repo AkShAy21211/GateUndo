@@ -55,6 +55,9 @@ type GateStatusRow = {
   lat: number;
   lng: number;
   road_name: string | null;
+  is_verified: boolean;
+  verified_at: string | null;
+  verification_note: string | null;
   status: GateStatus;
   report_count: number;
   recent_report_count: number;
@@ -70,6 +73,9 @@ type GateView = {
   lat: number;
   lng: number;
   roadName: string;
+  isVerified: boolean;
+  verifiedAt: string | null;
+  verificationNote: string | null;
   status: GateStatus;
   reportCount: number;
   recentReportCount: number;
@@ -128,6 +134,13 @@ type StatusView = {
 };
 
 type TrustView = {
+  label: string;
+  detail: string;
+  className: string;
+  Icon: LucideIcon;
+};
+
+type VerificationView = {
   label: string;
   detail: string;
   className: string;
@@ -371,6 +384,9 @@ function normalizeGate(gate: GateStatusRow): GateView {
     lat: gate.lat,
     lng: gate.lng,
     roadName: gate.road_name ?? "Road name unavailable",
+    isVerified: gate.is_verified,
+    verifiedAt: gate.verified_at,
+    verificationNote: gate.verification_note,
     status: gate.status,
     reportCount: gate.report_count,
     recentReportCount: gate.recent_report_count,
@@ -527,6 +543,24 @@ function getTrustSummary(gate: GateView): TrustView {
   };
 }
 
+function getVerificationSummary(gate: GateView): VerificationView {
+  if (gate.isVerified) {
+    return {
+      label: "Verified coordinate",
+      detail: "checked location",
+      className: "text-[var(--status-open)]",
+      Icon: ShieldCheck,
+    };
+  }
+
+  return {
+    label: "Provisional coordinate",
+    detail: "verify before relying",
+    className: "text-[var(--danger)]",
+    Icon: TriangleAlert,
+  };
+}
+
 function getHeaderStatus({
   isOnline,
   lastUpdatedAt,
@@ -658,6 +692,9 @@ export default function Home() {
               "lat",
               "lng",
               "road_name",
+              "is_verified",
+              "verified_at",
+              "verification_note",
               "status",
               "report_count",
               "recent_report_count",
@@ -1515,6 +1552,8 @@ function GateCard({
   const StatusIcon = status.Icon;
   const trust = getTrustSummary(gate);
   const TrustIcon = trust.Icon;
+  const verification = getVerificationSummary(gate);
+  const VerificationIcon = verification.Icon;
   const distanceLabel = formatDistance(distanceKm);
 
   return (
@@ -1574,6 +1613,14 @@ function GateCard({
               {trust.label}{" \u00b7 "}{trust.detail}
             </span>
           </p>
+          <p
+            className={`mt-1 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5] ${verification.className}`}
+          >
+            <VerificationIcon aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              {verification.label}{" \u00b7 "}{verification.detail}
+            </span>
+          </p>
         </div>
       </div>
     </button>
@@ -1601,6 +1648,8 @@ function ReportSheet({
 }) {
   const trust = getTrustSummary(gate);
   const TrustIcon = trust.Icon;
+  const verification = getVerificationSummary(gate);
+  const VerificationIcon = verification.Icon;
   const turnstileRef = useRef<HTMLDivElement | null>(null);
   const turnstileWidgetIdRef = useRef<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
@@ -1697,6 +1746,14 @@ function ReportSheet({
                 <TrustIcon aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">
                   {trust.label}{" \u00b7 "}{trust.detail}
+                </span>
+              </p>
+              <p
+                className={`mt-1 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5] ${verification.className}`}
+              >
+                <VerificationIcon aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">
+                  {verification.label}{" \u00b7 "}{verification.detail}
                 </span>
               </p>
             </div>
@@ -2347,9 +2404,14 @@ function MapView({
       .filter((gate) => isValidCoordinate(gate))
       .map((gate) => {
         const trust = getTrustSummary(gate);
+        const verification = getVerificationSummary(gate);
         const markerElement = document.createElement("button");
         markerElement.type = "button";
-        markerElement.className = `gate-map-marker gate-map-marker-${gate.status}`;
+        markerElement.className = [
+          "gate-map-marker",
+          `gate-map-marker-${gate.status}`,
+          gate.isVerified ? "gate-map-marker-verified" : "gate-map-marker-unverified",
+        ].join(" ");
         markerElement.innerHTML =
           '<span class="gate-map-marker-pin"><span class="gate-map-marker-icon" aria-hidden="true"></span></span>';
         markerElement.setAttribute("aria-label", `${gate.name} ${gate.status}`);
@@ -2363,6 +2425,7 @@ function MapView({
           <span>${statusStyles(gate.status).label} · ${escapeHtml(formatLastReported(gate.lastReportedAt))}</span>
           ${distanceLabel ? `<span>${escapeHtml(distanceLabel)}</span>` : ""}
           <span>${escapeHtml(trust.label)} · ${escapeHtml(trust.detail)}</span>
+          <span>${escapeHtml(verification.label)} · ${escapeHtml(verification.detail)}</span>
           <em>Report Status</em>
         `;
         popupElement.addEventListener("click", () => {
