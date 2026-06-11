@@ -1854,23 +1854,33 @@ export default function Home() {
               </p>
             </div>
           </div>
-          <div
-            className="flex min-h-11 shrink-0 items-center gap-2"
-            aria-label={`${headerStatus.label}: ${headerStatus.detail}`}
-          >
-            <HeaderStatusIcon
-              aria-hidden="true"
-              className={`h-4 w-4 ${headerStatus.className}`}
-              strokeWidth={2.4}
-            />
-            <span
-              className={`h-2 w-2 rounded-full ${headerStatus.dotClassName}`}
-            />
-            <span
-              className={`text-[13px] font-bold leading-[1.2] ${headerStatus.className}`}
+          <div className="flex shrink-0 items-center gap-3">
+            <a
+              href="/privacy"
+              aria-label="Privacy notes"
+              className="flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] sm:w-auto sm:gap-2 sm:px-3 sm:text-[13px] sm:font-semibold sm:leading-[1.5]"
             >
-              {headerStatus.label}
-            </span>
+              <ShieldCheck aria-hidden="true" className="h-4 w-4" />
+              <span className="hidden sm:inline">Privacy</span>
+            </a>
+            <div
+              className="flex min-h-11 items-center gap-2"
+              aria-label={`${headerStatus.label}: ${headerStatus.detail}`}
+            >
+              <HeaderStatusIcon
+                aria-hidden="true"
+                className={`h-4 w-4 ${headerStatus.className}`}
+                strokeWidth={2.4}
+              />
+              <span
+                className={`h-2 w-2 rounded-full ${headerStatus.dotClassName}`}
+              />
+              <span
+                className={`text-[13px] font-bold leading-[1.2] ${headerStatus.className}`}
+              >
+                {headerStatus.label}
+              </span>
+            </div>
           </div>
         </div>
       </header>
