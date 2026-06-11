@@ -64,6 +64,10 @@ type GateStatusRow = {
   recent_nearby_report_count: number;
   recent_open_count: number;
   recent_closed_count: number;
+  recent_open_score: number;
+  recent_closed_score: number;
+  recent_nearby_open_score: number;
+  recent_nearby_closed_score: number;
   last_reported_at: string | null;
 };
 
@@ -83,6 +87,10 @@ type GateView = {
   recentNearbyReportCount: number;
   recentOpenCount: number;
   recentClosedCount: number;
+  recentOpenScore: number;
+  recentClosedScore: number;
+  recentNearbyOpenScore: number;
+  recentNearbyClosedScore: number;
   lastReportedAt: string | null;
 };
 
@@ -432,6 +440,10 @@ function normalizeGate(gate: GateStatusRow): GateView {
     recentNearbyReportCount: gate.recent_nearby_report_count,
     recentOpenCount: gate.recent_open_count,
     recentClosedCount: gate.recent_closed_count,
+    recentOpenScore: gate.recent_open_score,
+    recentClosedScore: gate.recent_closed_score,
+    recentNearbyOpenScore: gate.recent_nearby_open_score,
+    recentNearbyClosedScore: gate.recent_nearby_closed_score,
     lastReportedAt: gate.last_reported_at,
   };
 }
@@ -455,12 +467,12 @@ function normalizeSuggestion(
   };
 }
 
-function getConsensusStatus(openCount: number, closedCount: number): GateStatus {
-  if (openCount > closedCount) {
+function getWeightedStatus(openScore: number, closedScore: number): GateStatus {
+  if (openScore > closedScore) {
     return "open";
   }
 
-  if (closedCount > openCount) {
+  if (closedScore > openScore) {
     return "closed";
   }
 
@@ -540,7 +552,15 @@ function getTrustSummary(gate: GateView): TrustView {
     recentNearbyReportCount,
     recentOpenCount,
     recentClosedCount,
+    recentOpenScore,
+    recentClosedScore,
+    recentNearbyOpenScore,
+    recentNearbyClosedScore,
   } = gate;
+  const activeOpenScore =
+    recentNearbyReportCount > 0 ? recentNearbyOpenScore : recentOpenScore;
+  const activeClosedScore =
+    recentNearbyReportCount > 0 ? recentNearbyClosedScore : recentClosedScore;
 
   if (recentReportCount === 0) {
     return {
@@ -551,7 +571,10 @@ function getTrustSummary(gate: GateView): TrustView {
     };
   }
 
-  if (recentOpenCount === recentClosedCount) {
+  if (
+    recentOpenCount === recentClosedCount &&
+    activeOpenScore === activeClosedScore
+  ) {
     return {
       label: "Mixed reports",
       detail: `${recentOpenCount} open / ${recentClosedCount} closed`,
@@ -561,6 +584,24 @@ function getTrustSummary(gate: GateView): TrustView {
   }
 
   const minorityCount = Math.min(recentOpenCount, recentClosedCount);
+
+  if (recentNearbyReportCount > 0 && activeOpenScore !== activeClosedScore) {
+    return {
+      label: "Nearby fresh signal",
+      detail: `${recentNearbyReportCount} nearby reports`,
+      className: "text-[var(--status-open)]",
+      Icon: ShieldCheck,
+    };
+  }
+
+  if (minorityCount > 0 && activeOpenScore !== activeClosedScore) {
+    return {
+      label: "Recency weighted",
+      detail: "fresh reports lead",
+      className: "text-[var(--accent)]",
+      Icon: ShieldCheck,
+    };
+  }
 
   if (minorityCount > 0) {
     return {
@@ -758,6 +799,10 @@ export default function Home() {
               "recent_nearby_report_count",
               "recent_open_count",
               "recent_closed_count",
+              "recent_open_score",
+              "recent_closed_score",
+              "recent_nearby_open_score",
+              "recent_nearby_closed_score",
               "last_reported_at",
             ].join(", "),
           )
@@ -1064,16 +1109,38 @@ export default function Home() {
           const distanceKm = getGateDistance(gate, userLocation);
           const isNearbyReport =
             distanceKm !== null && distanceKm <= REPORT_NEARBY_DISTANCE_KM;
+          const recentNearbyReportCount =
+            gate.recentNearbyReportCount + (isNearbyReport ? 1 : 0);
+          const recentOpenScore =
+            gate.recentOpenScore + (status === "open" ? 4 : 0);
+          const recentClosedScore =
+            gate.recentClosedScore + (status === "closed" ? 4 : 0);
+          const recentNearbyOpenScore =
+            gate.recentNearbyOpenScore +
+            (isNearbyReport && status === "open" ? 4 : 0);
+          const recentNearbyClosedScore =
+            gate.recentNearbyClosedScore +
+            (isNearbyReport && status === "closed" ? 4 : 0);
+          const nextStatus =
+            recentNearbyReportCount > 0
+              ? getWeightedStatus(
+                  recentNearbyOpenScore,
+                  recentNearbyClosedScore,
+                )
+              : getWeightedStatus(recentOpenScore, recentClosedScore);
 
           return {
             ...gate,
-            status: getConsensusStatus(recentOpenCount, recentClosedCount),
+            status: nextStatus,
             reportCount: gate.reportCount + 1,
             recentReportCount: gate.recentReportCount + 1,
-            recentNearbyReportCount:
-              gate.recentNearbyReportCount + (isNearbyReport ? 1 : 0),
+            recentNearbyReportCount,
             recentOpenCount,
             recentClosedCount,
+            recentOpenScore,
+            recentClosedScore,
+            recentNearbyOpenScore,
+            recentNearbyClosedScore,
             lastReportedAt: reportedAt,
           };
         }),
