@@ -44,6 +44,8 @@ type ReportStatus = "open" | "closed";
 
 type GateStatus = ReportStatus | "unknown";
 
+type SignalSource = "none" | "nearby" | "remote" | "mixed";
+
 type SuggestionStatus = "pending" | "community_confirmed";
 
 type SuggestionVote = "confirm" | "reject";
@@ -69,6 +71,10 @@ type GateStatusRow = {
   recent_nearby_open_score: number;
   recent_nearby_closed_score: number;
   last_reported_at: string | null;
+  signal_source?: SignalSource;
+  is_status_unstable?: boolean;
+  recent_status_flip_count?: number;
+  status_expires_at?: string | null;
 };
 
 type GateView = {
@@ -92,6 +98,10 @@ type GateView = {
   recentNearbyOpenScore: number;
   recentNearbyClosedScore: number;
   lastReportedAt: string | null;
+  signalSource: SignalSource;
+  isStatusUnstable: boolean;
+  recentStatusFlipCount: number;
+  statusExpiresAt: string | null;
 };
 
 type GateSuggestionRow = {
@@ -670,6 +680,10 @@ function normalizeGate(gate: GateStatusRow): GateView {
     recentNearbyOpenScore: gate.recent_nearby_open_score,
     recentNearbyClosedScore: gate.recent_nearby_closed_score,
     lastReportedAt: gate.last_reported_at,
+    signalSource: gate.signal_source ?? "none",
+    isStatusUnstable: gate.is_status_unstable ?? false,
+    recentStatusFlipCount: gate.recent_status_flip_count ?? 0,
+    statusExpiresAt: gate.status_expires_at ?? null,
   };
 }
 
@@ -796,6 +810,15 @@ function getTrustSummary(gate: GateView): TrustView {
     };
   }
 
+  if (gate.isStatusUnstable) {
+    return {
+      label: "Changing fast",
+      detail: "verify visually",
+      className: "text-[var(--danger)]",
+      Icon: TriangleAlert,
+    };
+  }
+
   if (
     recentOpenCount === recentClosedCount &&
     activeOpenScore === activeClosedScore
@@ -855,6 +878,15 @@ function getTrustSummary(gate: GateView): TrustView {
       detail: `${recentNearbyReportCount} nearby reports`,
       className: "text-[var(--status-open)]",
       Icon: ShieldCheck,
+    };
+  }
+
+  if (gate.signalSource === "mixed") {
+    return {
+      label: "Mixed signal",
+      detail: "wait for another report",
+      className: "text-[var(--danger)]",
+      Icon: TriangleAlert,
     };
   }
 
@@ -965,6 +997,10 @@ function isDuplicateSuggestionError(error: ReportInvokeError) {
   return error.context?.status === 409 || error.message.includes("409");
 }
 
+function isLocationTooFarError(error: ReportInvokeError) {
+  return error.context?.status === 422 || error.message.includes("422");
+}
+
 function suggestionStatusLabel(status: SuggestionStatus) {
   return status === "community_confirmed" ? "COMMUNITY CONFIRMED" : "PENDING";
 }
@@ -1067,6 +1103,10 @@ export default function Home() {
               "recent_nearby_open_score",
               "recent_nearby_closed_score",
               "last_reported_at",
+              "signal_source",
+              "is_status_unstable",
+              "recent_status_flip_count",
+              "status_expires_at",
             ].join(", "),
           )
           .order("district", { ascending: true })
@@ -1267,7 +1307,21 @@ export default function Home() {
         : gates.filter((gate) => gate.district === selectedDistrict);
 
     if (!userLocation) {
-      return nextGates;
+      return [...nextGates].sort((firstGate, secondGate) => {
+        if (firstGate.isVerified !== secondGate.isVerified) {
+          return Number(secondGate.isVerified) - Number(firstGate.isVerified);
+        }
+
+        if (firstGate.recentReportCount !== secondGate.recentReportCount) {
+          return secondGate.recentReportCount - firstGate.recentReportCount;
+        }
+
+        if (firstGate.reportCount !== secondGate.reportCount) {
+          return secondGate.reportCount - firstGate.reportCount;
+        }
+
+        return firstGate.name.localeCompare(secondGate.name);
+      });
     }
 
     return [...nextGates].sort((firstGate, secondGate) => {
@@ -1327,6 +1381,31 @@ export default function Home() {
       return firstDistance - secondDistance;
     });
   }, [selectedDistrict, suggestions, userLocation]);
+
+  const filteredGateTrustStats = useMemo(() => {
+    return filteredGates.reduce(
+      (stats, gate) => {
+        if (gate.isVerified) {
+          stats.verified += 1;
+        }
+
+        if (gate.recentReportCount === 0) {
+          stats.noRecentSignal += 1;
+        }
+
+        if (gate.isStatusUnstable) {
+          stats.unstable += 1;
+        }
+
+        return stats;
+      },
+      {
+        verified: 0,
+        noRecentSignal: 0,
+        unstable: 0,
+      },
+    );
+  }, [filteredGates]);
 
   const closeSheet = useCallback(() => {
     setSheetOffset(0);
@@ -1436,10 +1515,27 @@ export default function Home() {
                   recentNearbyClosedScore,
                 )
               : getWeightedStatus(recentOpenScore, recentClosedScore);
+          const recentStatusFlipCount =
+            gate.status !== nextStatus && nextStatus !== "unknown"
+              ? gate.recentStatusFlipCount + 1
+              : gate.recentStatusFlipCount;
+          const isStatusUnstable =
+            recentOpenCount > 0 &&
+            recentClosedCount > 0 &&
+            (recentStatusFlipCount >= 2 ||
+              Math.abs(recentOpenScore - recentClosedScore) <= 2);
 
           return {
             ...gate,
             status: nextStatus,
+            signalSource:
+              recentNearbyReportCount > 0
+                ? "nearby"
+                : recentOpenScore === recentClosedScore
+                  ? "mixed"
+                  : "remote",
+            isStatusUnstable,
+            recentStatusFlipCount,
             reportCount: gate.reportCount + 1,
             recentReportCount: gate.recentReportCount + 1,
             recentNearbyReportCount,
@@ -1450,6 +1546,9 @@ export default function Home() {
             recentNearbyOpenScore,
             recentNearbyClosedScore,
             lastReportedAt: reportedAt,
+            statusExpiresAt: new Date(
+              new Date(reportedAt).getTime() + 7 * 60 * 1000,
+            ).toISOString(),
           };
         }),
       );
@@ -1510,7 +1609,9 @@ export default function Home() {
             ? "Please wait before reporting again."
             : isBotCheckError(error)
               ? "Security check failed. Retry the check and submit again."
-            : "Report not recorded. Try again.",
+            : isLocationTooFarError(error)
+              ? "Too far from this gate. Use nearby reports only."
+              : "Report not recorded. Try again.",
         );
       } else if (acceptedReportAt) {
         setGates((currentGates) =>
@@ -1883,6 +1984,35 @@ export default function Home() {
               </span>
             </div>
             </div>
+
+            {!isLoading && !errorMessage && filteredGates.length > 0 ? (
+              <div className="mb-3 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-[13px] font-semibold leading-[1.5] text-[var(--text-secondary)]">
+                {filteredGateTrustStats.unstable > 0 ? (
+                  <span className="flex items-center gap-2 text-[var(--danger)]">
+                    <TriangleAlert
+                      aria-hidden="true"
+                      className="h-4 w-4 shrink-0"
+                    />
+                    {filteredGateTrustStats.unstable} gates changing fast - verify visually
+                  </span>
+                ) : filteredGateTrustStats.noRecentSignal ===
+                  filteredGates.length ? (
+                  <span className="flex items-center gap-2 text-[var(--accent)]">
+                    <Info aria-hidden="true" className="h-4 w-4 shrink-0" />
+                    No recent reports here - verified gates are shown first
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <ShieldCheck
+                      aria-hidden="true"
+                      className="h-4 w-4 shrink-0 text-[var(--status-open)]"
+                    />
+                    {filteredGateTrustStats.verified} verified gates{" \u00b7 "}
+                    {filteredGateTrustStats.noRecentSignal} without recent signal
+                  </span>
+                )}
+              </div>
+            ) : null}
 
             {isLoading ? <GateSkeletonList /> : null}
 
