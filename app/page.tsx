@@ -1911,14 +1911,6 @@ export default function Home() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-3">
-            <a
-              href="/privacy"
-              aria-label="Privacy notes"
-              className="flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] sm:w-auto sm:gap-2 sm:px-3 sm:text-[13px] sm:font-semibold sm:leading-[1.5]"
-            >
-              <ShieldCheck aria-hidden="true" className="h-4 w-4" />
-              <span className="hidden sm:inline">Privacy</span>
-            </a>
             <div
               className="flex min-h-11 items-center gap-2"
               aria-label={`${headerStatus.label}: ${headerStatus.detail}`}
@@ -2180,6 +2172,13 @@ export default function Home() {
 
       <footer className="mx-auto mt-6 flex min-h-11 w-full max-w-6xl flex-wrap items-center justify-center gap-2 px-4 pb-2 text-center text-[13px] font-semibold leading-[1.5] text-[var(--text-muted)] sm:px-6 lg:px-8">
         <span>© 2026 GateUndo</span>
+        <span aria-hidden="true">·</span>
+        <a
+          href="/privacy"
+          className="min-h-11 rounded-xl px-2 py-3 text-[var(--text-secondary)] underline-offset-4 hover:text-[var(--accent)] hover:underline"
+        >
+          Privacy
+        </a>
         <span aria-hidden="true">·</span>
         <span className="inline-flex items-center gap-1.5">
           Made with
