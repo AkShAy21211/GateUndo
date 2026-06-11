@@ -104,9 +104,9 @@ Deno.serve(async (request) => {
 
   const { data: gate, error: gateError } = await supabase
     .from("gates")
-    .select("id, lat, lng")
+    .select("id, lat, lng, is_active")
     .eq("id", gateId)
-    .maybeSingle<{ id: string; lat: number; lng: number }>();
+    .maybeSingle<{ id: string; lat: number; lng: number; is_active: boolean }>();
 
   if (gateError) {
     return jsonResponse({ error: "server_error" }, 500);
@@ -114,6 +114,10 @@ Deno.serve(async (request) => {
 
   if (!gate) {
     return jsonResponse({ error: "gate_not_found" }, 404);
+  }
+
+  if (!gate.is_active) {
+    return jsonResponse({ error: "gate_inactive" }, 409);
   }
 
   const { data: recentReport, error: recentError } = await supabase

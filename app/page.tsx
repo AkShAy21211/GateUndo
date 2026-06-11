@@ -61,6 +61,9 @@ type GateStatusRow = {
   road_name: string | null;
   nearest_station_name: string | null;
   nearest_station_code: string | null;
+  is_active: boolean;
+  inactive_reason: string | null;
+  inactive_at: string | null;
   is_verified: boolean;
   verified_at: string | null;
   verification_note: string | null;
@@ -90,6 +93,9 @@ type GateView = {
   roadName: string;
   nearestStationName: string | null;
   nearestStationCode: string | null;
+  isActive: boolean;
+  inactiveReason: string | null;
+  inactiveAt: string | null;
   isVerified: boolean;
   verifiedAt: string | null;
   verificationNote: string | null;
@@ -253,7 +259,7 @@ const GATE_CACHE_KEY = "railundo_gate_cache";
 const SUGGESTION_CACHE_KEY = "railundo_suggestion_cache";
 const BETA_BANNER_DISMISSED_UNTIL_KEY = "gateundo_beta_banner_dismissed_until";
 const BETA_BANNER_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
-const DATA_CACHE_VERSION = 3;
+const DATA_CACHE_VERSION = 4;
 const TRAIN_CHECK_URL = "https://enquiry.indianrail.gov.in/";
 const TURNSTILE_SCRIPT_ID = "railundo-turnstile-script";
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
@@ -684,6 +690,9 @@ function normalizeGate(gate: GateStatusRow): GateView {
     roadName: gate.road_name ?? "Road name unavailable",
     nearestStationName: gate.nearest_station_name,
     nearestStationCode: gate.nearest_station_code,
+    isActive: gate.is_active,
+    inactiveReason: gate.inactive_reason,
+    inactiveAt: gate.inactive_at,
     isVerified: gate.is_verified,
     verifiedAt: gate.verified_at,
     verificationNote: gate.verification_note,
@@ -841,7 +850,29 @@ function statusStyles(status: GateStatus): StatusView {
   };
 }
 
+function gateStatusStyles(gate: GateView): StatusView {
+  if (!gate.isActive) {
+    return {
+      dot: "bg-[var(--danger)]",
+      badge: "bg-[rgba(249,115,22,0.12)] text-[var(--danger)]",
+      label: "INACTIVE",
+      Icon: CircleX,
+    };
+  }
+
+  return statusStyles(gate.status);
+}
+
 function getTrustSummary(gate: GateView): TrustView {
+  if (!gate.isActive) {
+    return {
+      label: "Not a live gate",
+      detail: gate.inactiveReason ?? "inactive listing",
+      className: "text-[var(--danger)]",
+      Icon: TriangleAlert,
+    };
+  }
+
   const {
     recentReportCount,
     recentNearbyReportCount,
@@ -955,6 +986,15 @@ function getTrustSummary(gate: GateView): TrustView {
 }
 
 function getVerificationSummary(gate: GateView): VerificationView {
+  if (!gate.isActive) {
+    return {
+      label: "Inactive record",
+      detail: "kept for local context",
+      className: "text-[var(--danger)]",
+      Icon: Info,
+    };
+  }
+
   if (gate.isVerified) {
     return {
       label: "Verified coordinate",
@@ -1057,6 +1097,14 @@ function isLocationTooFarError(error: ReportInvokeError) {
   return error.context?.status === 422 || error.message.includes("422");
 }
 
+function isInactiveGateError(error: ReportInvokeError) {
+  return (
+    error.context?.status === 409 ||
+    error.message.includes("409") ||
+    error.message.toLowerCase().includes("inactive")
+  );
+}
+
 function suggestionStatusLabel(status: SuggestionStatus) {
   return status === "community_confirmed" ? "COMMUNITY CONFIRMED" : "PENDING";
 }
@@ -1148,6 +1196,9 @@ export default function Home() {
               "road_name",
               "nearest_station_name",
               "nearest_station_code",
+              "is_active",
+              "inactive_reason",
+              "inactive_at",
               "is_verified",
               "verified_at",
               "verification_note",
@@ -1539,6 +1590,11 @@ export default function Home() {
   }, []);
 
   const openSheet = useCallback((gate: GateView) => {
+    if (!gate.isActive) {
+      setToastMessage("This gate is marked inactive and is not accepting reports.");
+      return;
+    }
+
     setSheetOffset(0);
     setSelectedGate(gate);
   }, []);
@@ -1762,6 +1818,8 @@ export default function Home() {
               ? "Security check failed. Retry the check and submit again."
             : isLocationTooFarError(error)
               ? "Too far from this gate. Use nearby reports only."
+            : isInactiveGateError(error)
+              ? "This gate is marked inactive and is not accepting reports."
               : "Report not recorded. Try again.",
         );
       } else if (acceptedReportAt) {
@@ -2407,7 +2465,7 @@ function GateCard({
   distanceKm: number | null;
   onOpen: (gate: GateView) => void;
 }) {
-  const status = statusStyles(gate.status);
+  const status = gateStatusStyles(gate);
   const StatusIcon = status.Icon;
   const trust = getTrustSummary(gate);
   const TrustIcon = trust.Icon;
@@ -2420,8 +2478,17 @@ function GateCard({
     <button
       type="button"
       onClick={() => onOpen(gate)}
-      className="group min-h-[72px] w-full rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-[14px] text-left transition duration-150 ease-out active:scale-[0.985] active:bg-[var(--bg-elevated)]"
-      aria-label={`Report status for ${gate.name}`}
+      className={[
+        "group min-h-[72px] w-full rounded-xl border px-4 py-[14px] text-left transition duration-150 ease-out active:scale-[0.985]",
+        gate.isActive
+          ? "border-[var(--border)] bg-[var(--bg-surface)] active:bg-[var(--bg-elevated)]"
+          : "border-[var(--danger)]/40 bg-[rgba(249,115,22,0.08)]",
+      ].join(" ")}
+      aria-label={
+        gate.isActive
+          ? `Report status for ${gate.name}`
+          : `${gate.name} is marked inactive`
+      }
     >
       <div className="flex gap-3">
         <span
@@ -2470,8 +2537,9 @@ function GateCard({
           <p className="mt-2 flex items-center gap-1.5 text-[13px] font-normal leading-[1.5] text-[var(--text-muted)]">
             <Clock aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
             <span>
-              {gate.recentReportCount} recent reports{" \u00b7 "}
-              {formatLastReported(gate.lastReportedAt)}
+              {gate.isActive
+                ? `${gate.recentReportCount} recent reports · ${formatLastReported(gate.lastReportedAt)}`
+                : gate.inactiveReason ?? "Inactive gate record"}
             </span>
           </p>
           <p className="mt-1 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5] text-[var(--text-muted)]">
@@ -3277,12 +3345,17 @@ function MapView({
         markerElement.type = "button";
         markerElement.className = [
           "gate-map-marker",
-          `gate-map-marker-${gate.status}`,
+          gate.isActive
+            ? `gate-map-marker-${gate.status}`
+            : "gate-map-marker-inactive",
           gate.isVerified ? "gate-map-marker-verified" : "gate-map-marker-unverified",
         ].join(" ");
         markerElement.innerHTML =
           '<span class="gate-map-marker-pin"><span class="gate-map-marker-icon" aria-hidden="true"></span></span>';
-        markerElement.setAttribute("aria-label", `${gate.name} ${gate.status}`);
+        markerElement.setAttribute(
+          "aria-label",
+          gate.isActive ? `${gate.name} ${gate.status}` : `${gate.name} inactive`,
+        );
 
         const popupElement = document.createElement("button");
         popupElement.type = "button";
@@ -3291,13 +3364,13 @@ function MapView({
         const trainActivityHint = getTrainActivityHint(gate);
         popupElement.innerHTML = `
           <strong>${escapeHtml(gate.name)}</strong>
-          <span>${statusStyles(gate.status).label} · ${escapeHtml(formatLastReported(gate.lastReportedAt))}</span>
+          <span>${gateStatusStyles(gate).label} · ${escapeHtml(gate.isActive ? formatLastReported(gate.lastReportedAt) : gate.inactiveReason ?? "not accepting reports")}</span>
           ${distanceLabel ? `<span>${escapeHtml(distanceLabel)}</span>` : ""}
           <span>${escapeHtml(trust.label)} · ${escapeHtml(trust.detail)}</span>
           <span>${escapeHtml(verification.label)} · ${escapeHtml(verification.detail)}</span>
           <span>Last community report · always obey physical signals</span>
           ${trainActivityHint ? `<span>${escapeHtml(trainActivityHint)}</span>` : ""}
-          <em>Report gate status</em>
+          <em>${gate.isActive ? "Report gate status" : "Inactive gate record"}</em>
         `;
         popupElement.addEventListener("click", () => {
           latestOnOpenGateRef.current(gate);

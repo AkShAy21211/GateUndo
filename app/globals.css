@@ -127,6 +127,10 @@ a:focus-visible {
   --marker-color: var(--status-unknown);
 }
 
+.gate-map-marker-inactive {
+  --marker-color: var(--danger);
+}
+
 .gate-map-marker-unverified .gate-map-marker-pin {
   border-style: dashed;
 }

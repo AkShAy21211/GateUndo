@@ -38,6 +38,7 @@ Avoid wording like:
 - Nearby GPS trust signal for reports
 - Distance validation before optimistic report updates
 - Status instability warning when reports flip quickly
+- Inactive/obsolete gate records for crossings reported as closed, removed, or ROB-replaced
 - Offline saved gate data cache
 - Manual refresh in list view
 - PWA install support for Android home screen
@@ -110,6 +111,19 @@ GateUndo uses several lightweight trust layers:
 
 The app intentionally avoids login, user profiles, comments, and public identity features.
 
+## Inactive Or Obsolete Gates
+
+Some older crossings may be replaced by road overbridges or removed from daily use. GateUndo keeps those records visible only as local context when useful, but marks them inactive.
+
+Inactive gates:
+
+- Show `INACTIVE` instead of a live open/closed status
+- Do not accept public reports
+- Return unknown/no recent signal in public status views
+- Should be reviewed before being deleted, restored, or hidden completely
+
+Example: Pappinisseri is currently marked inactive because local feedback says it may have been replaced by an ROB. It should not be treated as a live reportable gate unless verified again.
+
 ## Architecture
 
 Frontend:
@@ -159,6 +173,7 @@ supabase/001_harden_reports.sql
 supabase/002_edge_report_rate_limit.sql
 ...
 supabase/015_gate_suggestion_station_context.sql
+supabase/017_gate_active_state.sql
 ```
 
 Seed data for the current Kannur beta is in:
