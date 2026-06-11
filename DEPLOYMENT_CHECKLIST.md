@@ -11,9 +11,12 @@ NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_token
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=your_turnstile_site_key
+NEXT_PUBLIC_POSTHOG_KEY=your_posthog_project_api_key
+NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
 ```
 
 `NEXT_PUBLIC_TURNSTILE_SITE_KEY` comes from Cloudflare Turnstile.
+`NEXT_PUBLIC_POSTHOG_KEY` comes from PostHog project settings.
 
 ## 2. Supabase SQL
 

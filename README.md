@@ -27,6 +27,7 @@ Avoid wording like safe, clear, proceed, or gate is open.
 - Offline saved data cache
 - PWA install support
 - DPDP/privacy notes at `/privacy`
+- Privacy-conscious PostHog pageview analytics
 
 ## Kannur Beta Seed Rule
 

@@ -18,6 +18,7 @@ GateUndo shows last community reports only. It does not decide whether a crossin
 - Local app cache: recent gate status and pending suggestions are stored in localStorage so the app can open on slow or offline connections.
 - Bot protection: Cloudflare Turnstile may process browser/security signals when enabled.
 - Map display: Mapbox receives map tile requests when the map view is opened.
+- Privacy-conscious analytics: PostHog may receive pageview events when enabled, with autocapture and session recording disabled.
 
 ## What We Do Not Collect
 
@@ -25,6 +26,7 @@ GateUndo shows last community reports only. It does not decide whether a crossin
 - No comments or social profile data.
 - No background location tracking.
 - No sale of user data.
+- No session replay recording.
 
 ## Why We Use This Data
 
@@ -33,6 +35,7 @@ GateUndo shows last community reports only. It does not decide whether a crossin
 - Reject or downweight suspicious reports.
 - Prevent rapid repeated reports and fake gate suggestions.
 - Cache the app shell and last known data for unreliable mobile networks.
+- Understand basic usage patterns so beta issues can be found and fixed.
 
 ## Retention
 

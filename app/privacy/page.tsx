@@ -17,6 +17,7 @@ const privacySections = [
       "Gate reports, gate suggestions, and suggestion votes",
       "Anonymous server-side hashes for spam control",
       "Optional GPS only when the browser grants permission",
+      "Basic pageview analytics when enabled",
     ],
   },
   {
@@ -25,6 +26,7 @@ const privacySections = [
     items: [
       "No login, phone number, email, password, or profile",
       "No background location tracking",
+      "No session replay recording",
       "Local cache stays in the browser for faster repeat opens",
     ],
   },

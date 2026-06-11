@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import PostHogRuntime from "@/components/PostHogRuntime";
 import PwaRuntime from "@/components/PwaRuntime";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "./globals.css";
@@ -34,8 +35,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        {children}
-        <PwaRuntime />
+        <PostHogRuntime>
+          {children}
+          <PwaRuntime />
+        </PostHogRuntime>
       </body>
     </html>
   );
