@@ -236,6 +236,7 @@ const KERALA_CENTER: [number, number] = [76.2711, 10.8505];
 const STALE_AFTER_MS = 75000;
 const SUPABASE_TIMEOUT_MS = 5000;
 const REPORT_NEARBY_DISTANCE_KM = 0.2;
+const REPORT_MAX_DISTANCE_KM = 1;
 const DEVICE_ID_KEY = "railundo_device_id";
 const SUGGESTION_VOTES_KEY = "railundo_suggestion_votes";
 const GATE_CACHE_KEY = "railundo_gate_cache";
@@ -1510,6 +1511,31 @@ export default function Home() {
       const previousGate = selectedGate;
       isSubmittingReportRef.current = true;
       setIsSubmittingReport(true);
+      const reportLocation = await requestReportLocation(userLocation);
+
+      if (reportLocation && !userLocation) {
+        setUserLocation(reportLocation);
+      }
+
+      const reportDistanceKm = reportLocation
+        ? distanceInKm(
+            reportLocation.lat,
+            reportLocation.lng,
+            selectedGate.lat,
+            selectedGate.lng,
+          )
+        : null;
+
+      if (
+        reportDistanceKm !== null &&
+        reportDistanceKm > REPORT_MAX_DISTANCE_KM
+      ) {
+        closeSheet();
+        setToastMessage("Too far from this gate. Report only when nearby.");
+        isSubmittingReportRef.current = false;
+        setIsSubmittingReport(false);
+        return;
+      }
 
       setGates((currentGates) =>
         currentGates.map((gate) => {
@@ -1521,7 +1547,14 @@ export default function Home() {
             gate.recentOpenCount + (status === "open" ? 1 : 0);
           const recentClosedCount =
             gate.recentClosedCount + (status === "closed" ? 1 : 0);
-          const distanceKm = getGateDistance(gate, userLocation);
+          const distanceKm = reportLocation
+            ? distanceInKm(
+                reportLocation.lat,
+                reportLocation.lng,
+                gate.lat,
+                gate.lng,
+              )
+            : null;
           const isNearbyReport =
             distanceKm !== null && distanceKm <= REPORT_NEARBY_DISTANCE_KM;
           const recentNearbyReportCount =
@@ -1585,11 +1618,6 @@ export default function Home() {
 
       let error: ReportInvokeError | null = null;
       let acceptedReportAt: string | null = null;
-      const reportLocation = await requestReportLocation(userLocation);
-
-      if (reportLocation && !userLocation) {
-        setUserLocation(reportLocation);
-      }
 
       try {
         const result = await withTimeout(
