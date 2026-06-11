@@ -41,6 +41,8 @@ See `ABUSE_MONITORING.md` for daily review queries and seed verification steps.
 
 Route-level intelligence is intentionally deferred until the core trust layer is stable. The future version should answer "will I be delayed on my route?" instead of only "what is gate X's last report?"
 
+Train activity hints are documented in `TRAIN_ACTIVITY_ROADMAP.md`. Phase 1 is safe to build now as station context only; automated train checks and delay-risk hints should wait for real-world validation.
+
 Possible route mode:
 
 - Save a commute route
