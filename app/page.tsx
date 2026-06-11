@@ -187,6 +187,7 @@ const KERALA_CENTER: [number, number] = [76.2711, 10.8505];
 const STALE_AFTER_MS = 75000;
 const SUPABASE_TIMEOUT_MS = 5000;
 const DEVICE_ID_KEY = "railundo_device_id";
+const SUGGESTION_VOTES_KEY = "railundo_suggestion_votes";
 const TURNSTILE_SCRIPT_ID = "railundo-turnstile-script";
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 const isTurnstileEnabled = Boolean(
@@ -270,6 +271,46 @@ function getDeviceId() {
 
   window.localStorage.setItem(DEVICE_ID_KEY, nextId);
   return nextId;
+}
+
+function getStoredSuggestionVotes() {
+  try {
+    const storedVotes = window.localStorage.getItem(SUGGESTION_VOTES_KEY);
+
+    if (!storedVotes) {
+      return {};
+    }
+
+    const parsedVotes = JSON.parse(storedVotes) as Record<string, unknown>;
+
+    return Object.fromEntries(
+      Object.entries(parsedVotes).filter((entry): entry is [string, SuggestionVote] => {
+        return entry[1] === "confirm" || entry[1] === "reject";
+      }),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function storeSuggestionVote(suggestionId: string, vote: SuggestionVote) {
+  try {
+    const nextVotes = {
+      ...getStoredSuggestionVotes(),
+      [suggestionId]: vote,
+    };
+
+    window.localStorage.setItem(
+      SUGGESTION_VOTES_KEY,
+      JSON.stringify(nextVotes),
+    );
+
+    return nextVotes;
+  } catch {
+    return {
+      [suggestionId]: vote,
+    };
+  }
 }
 
 function loadTurnstileScript() {
@@ -568,6 +609,9 @@ export default function Home() {
     useState<GateSuggestionView | null>(null);
   const [suggestionDraft, setSuggestionDraft] =
     useState<SuggestionDraft | null>(null);
+  const [suggestionVotes, setSuggestionVotes] = useState<
+    Record<string, SuggestionVote>
+  >({});
   const [sheetOffset, setSheetOffset] = useState(0);
   const [toastMessage, setToastMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -763,6 +807,10 @@ export default function Home() {
     const timeoutId = window.setTimeout(() => setToastMessage(""), 2500);
     return () => window.clearTimeout(timeoutId);
   }, [toastMessage]);
+
+  useEffect(() => {
+    setSuggestionVotes(getStoredSuggestionVotes());
+  }, []);
 
   const filteredGates = useMemo(() => {
     const nextGates =
@@ -1141,9 +1189,12 @@ export default function Home() {
           suggestion.id === nextSuggestion.id ? nextSuggestion : suggestion,
         ),
       );
+      setSuggestionVotes(storeSuggestionVote(nextSuggestion.id, vote));
       setSelectedSuggestion(nextSuggestion);
       setToastMessage(
-        vote === "confirm" ? "Thanks for confirming." : "Thanks for checking.",
+        vote === "confirm"
+          ? "You confirmed this gate."
+          : "You marked this as wrong.",
       );
       isVotingSuggestionRef.current = false;
       setIsVotingSuggestion(false);
@@ -1431,6 +1482,7 @@ export default function Home() {
         <SuggestionReviewSheet
           suggestion={selectedSuggestion}
           distanceKm={getSuggestionDistance(selectedSuggestion, userLocation)}
+          currentVote={suggestionVotes[selectedSuggestion.id] ?? null}
           offset={sheetOffset}
           onBackdropClick={closeSheet}
           onPointerDown={handleSheetPointerDown}
@@ -1907,6 +1959,7 @@ function SuggestGateSheet({
 function SuggestionReviewSheet({
   suggestion,
   distanceKm,
+  currentVote,
   offset,
   onBackdropClick,
   onPointerDown,
@@ -1917,6 +1970,7 @@ function SuggestionReviewSheet({
 }: {
   suggestion: GateSuggestionView;
   distanceKm: number | null;
+  currentVote: SuggestionVote | null;
   offset: number;
   onBackdropClick: () => void;
   onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
@@ -1931,6 +1985,13 @@ function SuggestionReviewSheet({
   const [turnstileError, setTurnstileError] = useState(false);
   const [pendingVote, setPendingVote] = useState<SuggestionVote | null>(null);
   const canVote = !isSubmitting && (!isTurnstileEnabled || Boolean(turnstileToken));
+  const displayedVote = pendingVote ?? currentVote;
+  const voteStatusText =
+    displayedVote === "confirm"
+      ? "You confirmed this gate."
+      : displayedVote === "reject"
+        ? "You marked this as wrong."
+        : "Your vote is not recorded yet.";
 
   useEffect(() => {
     if (!isSubmitting) {
@@ -2051,6 +2112,25 @@ function SuggestionReviewSheet({
             <p className="mt-1 text-[13px] font-normal leading-[1.5] text-[var(--text-muted)]">
               {suggestion.nearbyConfirmCount} nearby confirmations
             </p>
+            <p
+              className={[
+                "mt-2 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5]",
+                displayedVote === "confirm"
+                  ? "text-[var(--status-open)]"
+                  : displayedVote === "reject"
+                    ? "text-[var(--status-closed)]"
+                    : "text-[var(--text-muted)]",
+              ].join(" ")}
+            >
+              {displayedVote === "confirm" ? (
+                <CircleCheck aria-hidden="true" className="h-3.5 w-3.5" />
+              ) : displayedVote === "reject" ? (
+                <CircleX aria-hidden="true" className="h-3.5 w-3.5" />
+              ) : (
+                <Info aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              <span>{voteStatusText}</span>
+            </p>
             {suggestion.note ? (
               <p className="mt-2 text-[13px] font-normal leading-[1.5] text-[var(--text-secondary)]">
                 {suggestion.note}
@@ -2073,28 +2153,50 @@ function SuggestionReviewSheet({
             <button
               type="button"
               onClick={() => handleVote("confirm")}
-              disabled={!canVote}
-              className="flex min-h-[56px] items-center justify-center gap-2 rounded-xl bg-[var(--status-open)] px-4 text-[15px] font-semibold leading-[1.2] text-[#0A0A0A] active:scale-[0.985] disabled:opacity-60"
+              disabled={!canVote || displayedVote === "confirm"}
+              className={[
+                "flex min-h-[56px] items-center justify-center gap-2 rounded-xl px-4 text-[15px] font-semibold leading-[1.2] active:scale-[0.985] disabled:opacity-60",
+                displayedVote === "confirm"
+                  ? "border border-[var(--status-open)] bg-[var(--status-open-bg)] text-[var(--status-open)]"
+                  : "bg-[var(--status-open)] text-[#0A0A0A]",
+              ].join(" ")}
             >
               {pendingVote === "confirm" ? (
                 <RefreshCw aria-hidden="true" className="h-5 w-5 animate-spin" strokeWidth={2.6} />
               ) : (
                 <CircleCheck aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
               )}
-              {pendingVote === "confirm" ? "Confirming" : "Confirm"}
+              {pendingVote === "confirm"
+                ? "Confirming"
+                : displayedVote === "confirm"
+                  ? "Confirmed"
+                  : displayedVote === "reject"
+                    ? "Change to Confirm"
+                    : "Confirm"}
             </button>
             <button
               type="button"
               onClick={() => handleVote("reject")}
-              disabled={!canVote}
-              className="flex min-h-[56px] items-center justify-center gap-2 rounded-xl bg-[var(--status-closed)] px-4 text-[15px] font-semibold leading-[1.2] text-white active:scale-[0.985] disabled:opacity-60"
+              disabled={!canVote || displayedVote === "reject"}
+              className={[
+                "flex min-h-[56px] items-center justify-center gap-2 rounded-xl px-4 text-[15px] font-semibold leading-[1.2] active:scale-[0.985] disabled:opacity-60",
+                displayedVote === "reject"
+                  ? "border border-[var(--status-closed)] bg-[var(--status-closed-bg)] text-[var(--status-closed)]"
+                  : "bg-[var(--status-closed)] text-white",
+              ].join(" ")}
             >
               {pendingVote === "reject" ? (
                 <RefreshCw aria-hidden="true" className="h-5 w-5 animate-spin" strokeWidth={2.6} />
               ) : (
                 <CircleX aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
               )}
-              {pendingVote === "reject" ? "Sending" : "Wrong"}
+              {pendingVote === "reject"
+                ? "Sending"
+                : displayedVote === "reject"
+                  ? "Marked Wrong"
+                  : displayedVote === "confirm"
+                    ? "Change to Wrong"
+                    : "Wrong"}
             </button>
           </div>
         </div>
