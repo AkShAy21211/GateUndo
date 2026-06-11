@@ -1,26 +1,39 @@
 WITH seed_gates(name, district, lat, lng, road_name, is_verified, verification_note) AS (
   VALUES
-    ('Kannur LC-08', 'Kannur', 11.8752, 75.3648, 'NH 66 Approach', false, 'Seed coordinate - verify before public launch'),
-    ('Kannur LC-12', 'Kannur', 12.0415, 75.3621, 'Thaliparamba Road', false, 'Seed coordinate - verify before public launch'),
-    ('Kozhikode LC-38', 'Kozhikode', 11.2581, 75.7795, 'Beach Road', false, 'Seed coordinate - verify before public launch'),
-    ('Kozhikode LC-44', 'Kozhikode', 11.1432, 75.8519, 'Feroke Road', false, 'Seed coordinate - verify before public launch'),
-    ('Palakkad LC-85', 'Palakkad', 10.7621, 76.2708, 'NH 966', false, 'Seed coordinate - verify before public launch'),
-    ('Palakkad LC-90', 'Palakkad', 10.7705, 76.3781, 'Ottapalam Road', false, 'Seed coordinate - verify before public launch'),
-    ('Thrissur LC-102', 'Thrissur', 10.5280, 76.2140, 'Round South', false, 'Seed coordinate - verify before public launch'),
-    ('Thrissur LC-109', 'Thrissur', 10.3005, 76.3312, 'Chalakudy Road', false, 'Seed coordinate - verify before public launch'),
-    ('Ernakulam LC-128', 'Ernakulam', 9.9818, 76.2995, 'MG Road', false, 'Seed coordinate - verify before public launch'),
-    ('Ernakulam LC-134', 'Ernakulam', 10.1008, 76.3575, 'Aluva Bypass', false, 'Seed coordinate - verify before public launch'),
-    ('Kottayam LC-145', 'Kottayam', 9.5912, 76.5225, 'Baker Junction Road', false, 'Seed coordinate - verify before public launch'),
-    ('Kollam LC-175', 'Kollam', 8.8935, 76.6138, 'Station Road', false, 'Seed coordinate - verify before public launch'),
-    ('Thiruvananthapuram LC-195', 'Thiruvananthapuram', 8.4858, 76.9495, 'MG Road', false, 'Seed coordinate - verify before public launch'),
-    ('Kannur LC-22', 'Kannur', 12.0980, 75.2030, 'Payyanur Town Road', false, 'Seed coordinate - verify before public launch'),
-    ('Kozhikode LC-48', 'Kozhikode', 11.1275, 75.9480, 'University Road', false, 'Seed coordinate - verify before public launch')
+    ('Pappinisseri', 'Kannur', 11.938737, 75.348391, 'Pappinisseri railway crossing', true, 'Community sourced coordinate; verify against field survey before launch'),
+    ('Muzhappilangad', 'Kannur', 11.799612, 75.448296, 'Muzhappilangad railway crossing', true, 'Community sourced coordinate; verify against field survey before launch'),
+    ('Thazhe Chovva', 'Kannur', 11.864337, 75.407984, 'Thazhe Chovva railway crossing', true, 'Community sourced coordinate; verify against field survey before launch'),
+    ('Melechowa South', 'Kannur', 11.866387, 75.402703, 'Melechowa South railway crossing', true, 'Community sourced coordinate; verify against field survey before launch'),
+    ('Pallikkunnu', 'Kannur', 11.888852, 75.360965, 'Pallikkunnu railway crossing', true, 'Community sourced coordinate; verify against field survey before launch'),
+    ('Cherukunnu-Keezhara', 'Kannur', 11.990838, 75.308609, 'Cherukunnu-Keezhara railway crossing', true, 'Community sourced coordinate; verify against field survey before launch'),
+    ('Thavam', 'Kannur', 12.016511, 75.274600, 'Thavam railway crossing', true, 'Community sourced coordinate; verify against field survey before launch'),
+    ('Kuyyali (Thalassery)', 'Kannur', 11.759975, 75.488922, 'Kuyyali railway crossing', true, 'Community sourced coordinate; verify against field survey before launch'),
+    ('Gopalpet (New Mahe / Thalassery Border)', 'Kannur', 11.730793, 75.511741, 'Gopalpet railway crossing', true, 'Community sourced coordinate; verify against field survey before launch'),
+    ('Peringadi (Mahe Border)', 'Kannur', 11.710650, 75.544212, 'Peringadi railway crossing', true, 'Community sourced coordinate; verify against field survey before launch')
 )
-INSERT INTO gates (name, district, lat, lng, road_name, is_verified, verification_note)
-SELECT name, district, lat, lng, road_name, is_verified, verification_note
+INSERT INTO gates (
+  name,
+  district,
+  lat,
+  lng,
+  road_name,
+  is_verified,
+  verified_at,
+  verification_note
+)
+SELECT
+  name,
+  district,
+  lat,
+  lng,
+  road_name,
+  is_verified,
+  CASE WHEN is_verified THEN now() ELSE NULL END,
+  verification_note
 FROM seed_gates
 WHERE NOT EXISTS (
   SELECT 1
   FROM gates
   WHERE gates.name = seed_gates.name
+    AND gates.district = seed_gates.district
 );
