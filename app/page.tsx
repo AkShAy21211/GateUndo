@@ -61,6 +61,7 @@ type GateStatusRow = {
   status: GateStatus;
   report_count: number;
   recent_report_count: number;
+  recent_nearby_report_count: number;
   recent_open_count: number;
   recent_closed_count: number;
   last_reported_at: string | null;
@@ -79,6 +80,7 @@ type GateView = {
   status: GateStatus;
   reportCount: number;
   recentReportCount: number;
+  recentNearbyReportCount: number;
   recentOpenCount: number;
   recentClosedCount: number;
   lastReportedAt: string | null;
@@ -166,6 +168,8 @@ type ReportFunctionData = {
   report?: {
     status: ReportStatus;
     reported_at: string | null;
+    is_nearby?: boolean;
+    distance_meters?: number | null;
   };
 };
 
@@ -199,6 +203,7 @@ const supabase = createClient();
 const KERALA_CENTER: [number, number] = [76.2711, 10.8505];
 const STALE_AFTER_MS = 75000;
 const SUPABASE_TIMEOUT_MS = 5000;
+const REPORT_NEARBY_DISTANCE_KM = 0.2;
 const DEVICE_ID_KEY = "railundo_device_id";
 const SUGGESTION_VOTES_KEY = "railundo_suggestion_votes";
 const TURNSTILE_SCRIPT_ID = "railundo-turnstile-script";
@@ -376,6 +381,40 @@ function requestBrowserLocation() {
   });
 }
 
+function requestReportLocation(existingLocation: UserLocation | null) {
+  if (existingLocation) {
+    return Promise.resolve(existingLocation);
+  }
+
+  return new Promise<UserLocation | null>((resolve) => {
+    if (!("geolocation" in navigator)) {
+      resolve(null);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => resolve(null), 2500);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        window.clearTimeout(timeoutId);
+        resolve({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+      },
+      () => {
+        window.clearTimeout(timeoutId);
+        resolve(null);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 2200,
+        maximumAge: 60000,
+      },
+    );
+  });
+}
+
 function normalizeGate(gate: GateStatusRow): GateView {
   return {
     id: gate.id,
@@ -390,6 +429,7 @@ function normalizeGate(gate: GateStatusRow): GateView {
     status: gate.status,
     reportCount: gate.report_count,
     recentReportCount: gate.recent_report_count,
+    recentNearbyReportCount: gate.recent_nearby_report_count,
     recentOpenCount: gate.recent_open_count,
     recentClosedCount: gate.recent_closed_count,
     lastReportedAt: gate.last_reported_at,
@@ -495,7 +535,12 @@ function statusStyles(status: GateStatus): StatusView {
 }
 
 function getTrustSummary(gate: GateView): TrustView {
-  const { recentReportCount, recentOpenCount, recentClosedCount } = gate;
+  const {
+    recentReportCount,
+    recentNearbyReportCount,
+    recentOpenCount,
+    recentClosedCount,
+  } = gate;
 
   if (recentReportCount === 0) {
     return {
@@ -529,17 +574,29 @@ function getTrustSummary(gate: GateView): TrustView {
   if (recentReportCount < 3) {
     return {
       label: "Low confidence",
-      detail: `${recentReportCount} recent reports`,
+      detail:
+        recentNearbyReportCount > 0
+          ? `${recentNearbyReportCount} nearby reports`
+          : `${recentReportCount} recent reports`,
       className: "text-[var(--accent)]",
       Icon: Info,
     };
   }
 
+  if (recentNearbyReportCount > 0) {
+    return {
+      label: "Nearby signal",
+      detail: `${recentNearbyReportCount} nearby reports`,
+      className: "text-[var(--status-open)]",
+      Icon: ShieldCheck,
+    };
+  }
+
   return {
-    label: "Good signal",
-    detail: `${recentReportCount} recent reports`,
-    className: "text-[var(--status-open)]",
-    Icon: ShieldCheck,
+    label: "Remote signal",
+    detail: "no nearby reports",
+    className: "text-[var(--accent)]",
+    Icon: Info,
   };
 }
 
@@ -698,6 +755,7 @@ export default function Home() {
               "status",
               "report_count",
               "recent_report_count",
+              "recent_nearby_report_count",
               "recent_open_count",
               "recent_closed_count",
               "last_reported_at",
@@ -1003,12 +1061,17 @@ export default function Home() {
             gate.recentOpenCount + (status === "open" ? 1 : 0);
           const recentClosedCount =
             gate.recentClosedCount + (status === "closed" ? 1 : 0);
+          const distanceKm = getGateDistance(gate, userLocation);
+          const isNearbyReport =
+            distanceKm !== null && distanceKm <= REPORT_NEARBY_DISTANCE_KM;
 
           return {
             ...gate,
             status: getConsensusStatus(recentOpenCount, recentClosedCount),
             reportCount: gate.reportCount + 1,
             recentReportCount: gate.recentReportCount + 1,
+            recentNearbyReportCount:
+              gate.recentNearbyReportCount + (isNearbyReport ? 1 : 0),
             recentOpenCount,
             recentClosedCount,
             lastReportedAt: reportedAt,
@@ -1020,6 +1083,11 @@ export default function Home() {
 
       let error: ReportInvokeError | null = null;
       let acceptedReportAt: string | null = null;
+      const reportLocation = await requestReportLocation(userLocation);
+
+      if (reportLocation && !userLocation) {
+        setUserLocation(reportLocation);
+      }
 
       try {
         const result = await withTimeout(
@@ -1028,6 +1096,8 @@ export default function Home() {
               gate_id: gateId,
               status,
               device_id: getDeviceId(),
+              user_lat: reportLocation?.lat ?? null,
+              user_lng: reportLocation?.lng ?? null,
               turnstile_token: turnstileToken,
             },
           }),
@@ -1081,7 +1151,7 @@ export default function Home() {
       isSubmittingReportRef.current = false;
       setIsSubmittingReport(false);
     },
-    [closeSheet, fetchGates, selectedGate],
+    [closeSheet, fetchGates, selectedGate, userLocation],
   );
 
   const submitGateSuggestion = useCallback(

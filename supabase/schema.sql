@@ -18,6 +18,10 @@ CREATE TABLE reports (
   gate_id UUID NOT NULL REFERENCES gates(id) ON DELETE CASCADE,
   status TEXT CHECK (status IN ('open', 'closed')) NOT NULL,
   reporter_hash TEXT,
+  user_lat DOUBLE PRECISION,
+  user_lng DOUBLE PRECISION,
+  distance_meters INTEGER,
+  is_nearby BOOLEAN NOT NULL DEFAULT false,
   reported_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -77,6 +81,8 @@ CREATE INDEX idx_reports_reported_at ON reports(reported_at DESC);
 CREATE INDEX idx_reports_gate_id_reported_at ON reports(gate_id, reported_at DESC);
 CREATE INDEX idx_reports_gate_reporter_recent ON reports(gate_id, reporter_hash, reported_at DESC)
   WHERE reporter_hash IS NOT NULL;
+CREATE INDEX idx_reports_gate_nearby_reported_at
+  ON reports(gate_id, is_nearby, reported_at DESC);
 CREATE INDEX idx_report_events_created_at ON report_events(created_at DESC);
 CREATE INDEX idx_gates_is_verified_district ON gates(is_verified, district, name);
 CREATE INDEX idx_gate_suggestions_status_district
@@ -254,10 +260,21 @@ SELECT
   gates.verification_note,
   COALESCE(report_counts.total_reports, 0)::INTEGER AS report_count,
   COALESCE(report_counts.recent_reports, 0)::INTEGER AS recent_report_count,
+  COALESCE(report_counts.recent_nearby_reports, 0)::INTEGER AS recent_nearby_report_count,
   COALESCE(report_counts.recent_open_reports, 0)::INTEGER AS recent_open_count,
   COALESCE(report_counts.recent_closed_reports, 0)::INTEGER AS recent_closed_count,
   report_counts.last_reported_at,
   CASE
+    WHEN COALESCE(report_counts.recent_nearby_reports, 0) > 0
+      AND COALESCE(report_counts.recent_nearby_open_reports, 0) >
+        COALESCE(report_counts.recent_nearby_closed_reports, 0)
+      THEN 'open'
+    WHEN COALESCE(report_counts.recent_nearby_reports, 0) > 0
+      AND COALESCE(report_counts.recent_nearby_closed_reports, 0) >
+        COALESCE(report_counts.recent_nearby_open_reports, 0)
+      THEN 'closed'
+    WHEN COALESCE(report_counts.recent_nearby_reports, 0) > 0
+      THEN 'unknown'
     WHEN COALESCE(report_counts.recent_open_reports, 0) >
       COALESCE(report_counts.recent_closed_reports, 0)
       THEN 'open'
@@ -275,12 +292,26 @@ LEFT JOIN LATERAL (
     ) AS recent_reports,
     COUNT(*) FILTER (
       WHERE reports.reported_at >= now() - INTERVAL '7 minutes'
+        AND reports.is_nearby
+    ) AS recent_nearby_reports,
+    COUNT(*) FILTER (
+      WHERE reports.reported_at >= now() - INTERVAL '7 minutes'
         AND reports.status = 'open'
     ) AS recent_open_reports,
     COUNT(*) FILTER (
       WHERE reports.reported_at >= now() - INTERVAL '7 minutes'
         AND reports.status = 'closed'
     ) AS recent_closed_reports,
+    COUNT(*) FILTER (
+      WHERE reports.reported_at >= now() - INTERVAL '7 minutes'
+        AND reports.is_nearby
+        AND reports.status = 'open'
+    ) AS recent_nearby_open_reports,
+    COUNT(*) FILTER (
+      WHERE reports.reported_at >= now() - INTERVAL '7 minutes'
+        AND reports.is_nearby
+        AND reports.status = 'closed'
+    ) AS recent_nearby_closed_reports,
     MAX(reports.reported_at) AS last_reported_at
   FROM reports
   WHERE reports.gate_id = gates.id

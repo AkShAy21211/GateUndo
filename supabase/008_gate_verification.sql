@@ -25,10 +25,21 @@ SELECT
   gates.verification_note,
   COALESCE(report_counts.total_reports, 0)::INTEGER AS report_count,
   COALESCE(report_counts.recent_reports, 0)::INTEGER AS recent_report_count,
+  COALESCE(report_counts.recent_nearby_reports, 0)::INTEGER AS recent_nearby_report_count,
   COALESCE(report_counts.recent_open_reports, 0)::INTEGER AS recent_open_count,
   COALESCE(report_counts.recent_closed_reports, 0)::INTEGER AS recent_closed_count,
   report_counts.last_reported_at,
   CASE
+    WHEN COALESCE(report_counts.recent_nearby_reports, 0) > 0
+      AND COALESCE(report_counts.recent_nearby_open_reports, 0) >
+        COALESCE(report_counts.recent_nearby_closed_reports, 0)
+      THEN 'open'
+    WHEN COALESCE(report_counts.recent_nearby_reports, 0) > 0
+      AND COALESCE(report_counts.recent_nearby_closed_reports, 0) >
+        COALESCE(report_counts.recent_nearby_open_reports, 0)
+      THEN 'closed'
+    WHEN COALESCE(report_counts.recent_nearby_reports, 0) > 0
+      THEN 'unknown'
     WHEN COALESCE(report_counts.recent_open_reports, 0) >
       COALESCE(report_counts.recent_closed_reports, 0)
       THEN 'open'
@@ -46,12 +57,26 @@ LEFT JOIN LATERAL (
     ) AS recent_reports,
     COUNT(*) FILTER (
       WHERE reports.reported_at >= now() - INTERVAL '7 minutes'
+        AND reports.is_nearby
+    ) AS recent_nearby_reports,
+    COUNT(*) FILTER (
+      WHERE reports.reported_at >= now() - INTERVAL '7 minutes'
         AND reports.status = 'open'
     ) AS recent_open_reports,
     COUNT(*) FILTER (
       WHERE reports.reported_at >= now() - INTERVAL '7 minutes'
         AND reports.status = 'closed'
     ) AS recent_closed_reports,
+    COUNT(*) FILTER (
+      WHERE reports.reported_at >= now() - INTERVAL '7 minutes'
+        AND reports.is_nearby
+        AND reports.status = 'open'
+    ) AS recent_nearby_open_reports,
+    COUNT(*) FILTER (
+      WHERE reports.reported_at >= now() - INTERVAL '7 minutes'
+        AND reports.is_nearby
+        AND reports.status = 'closed'
+    ) AS recent_nearby_closed_reports,
     MAX(reports.reported_at) AS last_reported_at
   FROM reports
   WHERE reports.gate_id = gates.id

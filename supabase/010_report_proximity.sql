@@ -1,6 +1,14 @@
--- Aggressive status decay: open/closed status only uses reports from the
--- last 7 minutes. Older reports remain in history, but the live status falls
--- back to unknown/no recent signal.
+-- GPS proximity validation for reports. Reports without location are still
+-- accepted, but nearby reports become the preferred signal when available.
+
+ALTER TABLE reports
+  ADD COLUMN IF NOT EXISTS user_lat DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS user_lng DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS distance_meters INTEGER,
+  ADD COLUMN IF NOT EXISTS is_nearby BOOLEAN NOT NULL DEFAULT false;
+
+CREATE INDEX IF NOT EXISTS idx_reports_gate_nearby_reported_at
+  ON reports(gate_id, is_nearby, reported_at DESC);
 
 DROP VIEW IF EXISTS gate_statuses;
 

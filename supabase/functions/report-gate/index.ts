@@ -6,6 +6,8 @@ type ReportPayload = {
   gate_id?: string;
   status?: ReportStatus;
   device_id?: string;
+  user_lat?: number | null;
+  user_lng?: number | null;
   turnstile_token?: string | null;
 };
 
@@ -22,6 +24,7 @@ const corsHeaders = {
 };
 
 const REPORT_COOLDOWN_SECONDS = 120;
+const NEARBY_REPORT_DISTANCE_KM = 0.2;
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
@@ -95,9 +98,9 @@ Deno.serve(async (request) => {
 
   const { data: gate, error: gateError } = await supabase
     .from("gates")
-    .select("id")
+    .select("id, lat, lng")
     .eq("id", gateId)
-    .maybeSingle();
+    .maybeSingle<{ id: string; lat: number; lng: number }>();
 
   if (gateError) {
     return jsonResponse({ error: "server_error" }, 500);
@@ -130,14 +133,28 @@ Deno.serve(async (request) => {
     );
   }
 
+  const reportDistanceKm = isKeralaCoordinate(
+    payload.user_lat,
+    payload.user_lng,
+  )
+    ? distanceInKm(payload.user_lat!, payload.user_lng!, gate.lat, gate.lng)
+    : null;
+  const isNearby =
+    reportDistanceKm !== null && reportDistanceKm <= NEARBY_REPORT_DISTANCE_KM;
+
   const { data: report, error: insertError } = await supabase
     .from("reports")
     .insert({
       gate_id: gateId,
       status,
       reporter_hash: reporterHash,
+      user_lat: reportDistanceKm === null ? null : payload.user_lat,
+      user_lng: reportDistanceKm === null ? null : payload.user_lng,
+      distance_meters:
+        reportDistanceKm === null ? null : Math.round(reportDistanceKm * 1000),
+      is_nearby: isNearby,
     })
-    .select("id, status, reported_at")
+    .select("id, status, reported_at, is_nearby, distance_meters")
     .single();
 
   if (insertError) {
@@ -166,6 +183,19 @@ function isReportStatus(value: unknown): value is ReportStatus {
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value,
+  );
+}
+
+function isKeralaCoordinate(lat: unknown, lng: unknown) {
+  return (
+    typeof lat === "number" &&
+    typeof lng === "number" &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= 8.0 &&
+    lat <= 13.0 &&
+    lng >= 74.5 &&
+    lng <= 78.0
   );
 }
 
@@ -253,4 +283,27 @@ function runAfterResponse(task: Promise<unknown>) {
   if (typeof runtime.EdgeRuntime?.waitUntil === "function") {
     runtime.EdgeRuntime.waitUntil(safeTask);
   }
+}
+
+function distanceInKm(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+) {
+  const earthRadiusKm = 6371;
+  const dLat = toRadians(lat2 - lat1);
+  const dLng = toRadians(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) *
+      Math.cos(toRadians(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function toRadians(value: number) {
+  return (value * Math.PI) / 180;
 }
