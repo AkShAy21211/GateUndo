@@ -34,14 +34,14 @@ LEFT JOIN LATERAL (
   SELECT
     COUNT(*) AS total_reports,
     COUNT(*) FILTER (
-      WHERE reports.reported_at >= now() - INTERVAL '10 minutes'
+      WHERE reports.reported_at >= now() - INTERVAL '7 minutes'
     ) AS recent_reports,
     COUNT(*) FILTER (
-      WHERE reports.reported_at >= now() - INTERVAL '10 minutes'
+      WHERE reports.reported_at >= now() - INTERVAL '7 minutes'
     AND reports.status = 'open'
     ) AS recent_open_reports,
     COUNT(*) FILTER (
-      WHERE reports.reported_at >= now() - INTERVAL '10 minutes'
+      WHERE reports.reported_at >= now() - INTERVAL '7 minutes'
     AND reports.status = 'closed'
     ) AS recent_closed_reports,
     MAX(reports.reported_at) AS last_reported_at

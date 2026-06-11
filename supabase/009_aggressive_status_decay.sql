@@ -1,13 +1,6 @@
--- Gate coordinate verification. Unverified gates stay visible as provisional,
--- but the app must not present them as verified official coordinates.
-
-ALTER TABLE gates
-  ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS verification_note TEXT;
-
-CREATE INDEX IF NOT EXISTS idx_gates_is_verified_district
-  ON gates(is_verified, district, name);
+-- Aggressive status decay: open/closed status only uses reports from the
+-- last 7 minutes. Older reports remain in history, but the live status falls
+-- back to unknown/no recent signal.
 
 DROP VIEW IF EXISTS gate_statuses;
 

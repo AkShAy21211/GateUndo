@@ -1607,7 +1607,7 @@ function GateCard({
           </p>
           <p className="mt-1 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5] text-[var(--text-muted)]">
             <Info aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">Community report only</span>
+            <span className="truncate">Community report only · expires after 7 min</span>
           </p>
           <p
             className={`mt-1 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5] ${trust.className}`}
@@ -1763,7 +1763,7 @@ function ReportSheet({
               <p className="mt-1 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5] text-[var(--text-muted)]">
                 <Info aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">
-                  Community report only. Obey physical signals.
+                  Community report only. Expires after 7 min. Obey physical signals.
                 </span>
               </p>
             </div>
@@ -2436,7 +2436,7 @@ function MapView({
           ${distanceLabel ? `<span>${escapeHtml(distanceLabel)}</span>` : ""}
           <span>${escapeHtml(trust.label)} · ${escapeHtml(trust.detail)}</span>
           <span>${escapeHtml(verification.label)} · ${escapeHtml(verification.detail)}</span>
-          <span>Community report only</span>
+          <span>Community report only · expires after 7 min</span>
           <em>Report gate status</em>
         `;
         popupElement.addEventListener("click", () => {

@@ -119,7 +119,7 @@ AFTER INSERT ON reports
 FOR EACH ROW
 EXECUTE FUNCTION create_report_event();
 
--- Keep raw report storage bounded. Current status only needs the last 10 minutes.
+-- Keep raw report storage bounded. Current status only needs the last 7 minutes.
 CREATE OR REPLACE FUNCTION cleanup_old_reports()
 RETURNS INTEGER
 LANGUAGE plpgsql
@@ -271,14 +271,14 @@ LEFT JOIN LATERAL (
   SELECT
     COUNT(*) AS total_reports,
     COUNT(*) FILTER (
-      WHERE reports.reported_at >= now() - INTERVAL '10 minutes'
+      WHERE reports.reported_at >= now() - INTERVAL '7 minutes'
     ) AS recent_reports,
     COUNT(*) FILTER (
-      WHERE reports.reported_at >= now() - INTERVAL '10 minutes'
+      WHERE reports.reported_at >= now() - INTERVAL '7 minutes'
         AND reports.status = 'open'
     ) AS recent_open_reports,
     COUNT(*) FILTER (
-      WHERE reports.reported_at >= now() - INTERVAL '10 minutes'
+      WHERE reports.reported_at >= now() - INTERVAL '7 minutes'
         AND reports.status = 'closed'
     ) AS recent_closed_reports,
     MAX(reports.reported_at) AS last_reported_at
