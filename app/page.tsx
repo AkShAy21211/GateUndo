@@ -472,7 +472,7 @@ function statusStyles(status: GateStatus): StatusView {
     return {
       dot: "bg-[var(--status-open)]",
       badge: "bg-[var(--status-open-bg)] text-[var(--status-open)]",
-      label: "OPEN",
+      label: "REPORTED OPEN",
       Icon: Circle,
     };
   }
@@ -481,7 +481,7 @@ function statusStyles(status: GateStatus): StatusView {
     return {
       dot: "bg-[var(--status-closed)]",
       badge: "bg-[var(--status-closed-bg)] text-[var(--status-closed)]",
-      label: "CLOSED",
+      label: "REPORTED CLOSED",
       Icon: Circle,
     };
   }
@@ -489,7 +489,7 @@ function statusStyles(status: GateStatus): StatusView {
   return {
     dot: "bg-[var(--status-unknown)]",
     badge: "bg-[var(--status-unknown-bg)] text-[var(--status-unknown)]",
-    label: "UNKNOWN",
+    label: "NO RECENT SIGNAL",
     Icon: CircleDashed,
   };
 }
@@ -1587,7 +1587,7 @@ function GateCard({
               </div>
             </div>
             <span
-              className={`inline-flex shrink-0 items-center gap-1 rounded-full px-[10px] py-1 text-[13px] font-bold leading-[1.2] ${status.badge}`}
+              className={`inline-flex max-w-[132px] shrink-0 items-center gap-1 rounded-full px-[10px] py-1 text-[12px] font-bold leading-[1.2] sm:max-w-none sm:text-[13px] ${status.badge}`}
               aria-label={`Status ${status.label}`}
             >
               <StatusIcon
@@ -1595,7 +1595,7 @@ function GateCard({
                 className="h-3 w-3 fill-current"
                 strokeWidth={2.4}
               />
-              {status.label}
+              <span className="truncate">{status.label}</span>
             </span>
           </div>
           <p className="mt-2 flex items-center gap-1.5 text-[13px] font-normal leading-[1.5] text-[var(--text-muted)]">
@@ -1604,6 +1604,10 @@ function GateCard({
               {gate.recentReportCount} recent reports{" \u00b7 "}
               {formatLastReported(gate.lastReportedAt)}
             </span>
+          </p>
+          <p className="mt-1 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5] text-[var(--text-muted)]">
+            <Info aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">Community report only</span>
           </p>
           <p
             className={`mt-1 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5] ${trust.className}`}
@@ -1756,6 +1760,12 @@ function ReportSheet({
                   {verification.label}{" \u00b7 "}{verification.detail}
                 </span>
               </p>
+              <p className="mt-1 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5] text-[var(--text-muted)]">
+                <Info aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">
+                  Community report only. Obey physical signals.
+                </span>
+              </p>
             </div>
             <button
               type="button"
@@ -1791,7 +1801,7 @@ function ReportSheet({
               ) : (
                 <CircleCheck aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
               )}
-              {isSubmitting ? "Recording" : "OPEN"}
+              {isSubmitting ? "Recording" : "Report Open"}
             </button>
             <button
               type="button"
@@ -1804,7 +1814,7 @@ function ReportSheet({
               ) : (
                 <CircleX aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
               )}
-              {isSubmitting ? "Recording" : "CLOSED"}
+              {isSubmitting ? "Recording" : "Report Closed"}
             </button>
           </div>
         </div>
@@ -2426,7 +2436,8 @@ function MapView({
           ${distanceLabel ? `<span>${escapeHtml(distanceLabel)}</span>` : ""}
           <span>${escapeHtml(trust.label)} · ${escapeHtml(trust.detail)}</span>
           <span>${escapeHtml(verification.label)} · ${escapeHtml(verification.detail)}</span>
-          <em>Report Status</em>
+          <span>Community report only</span>
+          <em>Report gate status</em>
         `;
         popupElement.addEventListener("click", () => {
           latestOnOpenGateRef.current(gate);
