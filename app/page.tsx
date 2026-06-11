@@ -583,6 +583,8 @@ export default function Home() {
   const [isLocating, setIsLocating] = useState(false);
   const dragStartY = useRef<number | null>(null);
   const isSubmittingReportRef = useRef(false);
+  const isSubmittingSuggestionRef = useRef(false);
+  const isVotingSuggestionRef = useRef(false);
   const headerStatus = getHeaderStatus({
     isOnline,
     lastUpdatedAt,
@@ -861,13 +863,17 @@ export default function Home() {
   );
 
   const refreshGates = useCallback(async () => {
+    if (isRefreshing) {
+      return;
+    }
+
     setIsRefreshing(true);
     try {
       await Promise.all([fetchGates(), fetchGateSuggestions()]);
     } finally {
       setIsRefreshing(false);
     }
-  }, [fetchGateSuggestions, fetchGates]);
+  }, [fetchGateSuggestions, fetchGates, isRefreshing]);
 
   const useNearestGates = useCallback(async () => {
     if (isLocating) {
@@ -1006,11 +1012,12 @@ export default function Home() {
       if (
         !suggestionDraft ||
         selectedDistrict === "All" ||
-        isSubmittingSuggestion
+        isSubmittingSuggestionRef.current
       ) {
         return;
       }
 
+      isSubmittingSuggestionRef.current = true;
       setIsSubmittingSuggestion(true);
 
       let error: ReportInvokeError | null = null;
@@ -1055,6 +1062,7 @@ export default function Home() {
               ? "A gate or suggestion is already near here."
               : "Suggestion not recorded. Try again.",
         );
+        isSubmittingSuggestionRef.current = false;
         setIsSubmittingSuggestion(false);
         return;
       }
@@ -1068,22 +1076,19 @@ export default function Home() {
       ]);
       closeSheet();
       setToastMessage("Gate suggestion added for review.");
+      isSubmittingSuggestionRef.current = false;
       setIsSubmittingSuggestion(false);
     },
-    [
-      closeSheet,
-      isSubmittingSuggestion,
-      selectedDistrict,
-      suggestionDraft,
-    ],
+    [closeSheet, selectedDistrict, suggestionDraft],
   );
 
   const voteGateSuggestion = useCallback(
     async (vote: SuggestionVote, turnstileToken: string | null) => {
-      if (!selectedSuggestion || isVotingSuggestion) {
+      if (!selectedSuggestion || isVotingSuggestionRef.current) {
         return;
       }
 
+      isVotingSuggestionRef.current = true;
       setIsVotingSuggestion(true);
 
       let error: ReportInvokeError | null = null;
@@ -1125,6 +1130,7 @@ export default function Home() {
             ? "Please wait before voting again."
             : "Vote not recorded. Try again.",
         );
+        isVotingSuggestionRef.current = false;
         setIsVotingSuggestion(false);
         return;
       }
@@ -1139,9 +1145,10 @@ export default function Home() {
       setToastMessage(
         vote === "confirm" ? "Thanks for confirming." : "Thanks for checking.",
       );
+      isVotingSuggestionRef.current = false;
       setIsVotingSuggestion(false);
     },
-    [isVotingSuggestion, selectedSuggestion, userLocation],
+    [selectedSuggestion, userLocation],
   );
 
   const handleSheetPointerDown = useCallback(
@@ -1303,8 +1310,12 @@ export default function Home() {
                     : "border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-primary)]",
                 ].join(" ")}
               >
-                <MapPin aria-hidden="true" className="h-4 w-4" />
-                {isLocating ? "Locating" : "Near me"}
+                {isLocating ? (
+                  <RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MapPin aria-hidden="true" className="h-4 w-4" />
+                )}
+                {isLocating ? "Finding" : "Near me"}
               </button>
               <span className="text-[13px] font-normal leading-[1.5] text-[var(--text-muted)]">
                 {filteredGates.length} gates
@@ -1379,6 +1390,7 @@ export default function Home() {
           className="fixed bottom-[calc(20px+env(safe-area-inset-bottom))] right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full border border-[var(--border-strong)] bg-[var(--accent)] text-[#0A0A0A] shadow-2xl active:scale-95 disabled:opacity-70"
           disabled={isRefreshing}
           aria-label="Refresh gate status"
+          aria-busy={isRefreshing}
         >
           <RefreshCw
             aria-hidden="true"
@@ -1593,6 +1605,7 @@ function ReportSheet({
         type="button"
         className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
         aria-label="Close report sheet"
+        disabled={isSubmitting}
         onClick={onBackdropClick}
       />
       <div className="absolute inset-x-0 bottom-0 flex justify-center px-3 sm:px-4">
@@ -1600,6 +1613,7 @@ function ReportSheet({
           role="dialog"
           aria-modal="true"
           aria-labelledby="report-sheet-title"
+          aria-busy={isSubmitting}
           className="sheet-open w-full max-w-[460px] touch-none rounded-t-[20px] border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-4 pb-[calc(20px+env(safe-area-inset-bottom))] pt-3 shadow-2xl"
           style={{
             transform: `translateY(${offset}px)`,
@@ -1637,6 +1651,7 @@ function ReportSheet({
             <button
               type="button"
               onClick={onBackdropClick}
+              disabled={isSubmitting}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)]"
               aria-label="Close report sheet"
             >
@@ -1662,8 +1677,12 @@ function ReportSheet({
               disabled={!canReport}
               className="flex min-h-[56px] items-center justify-center gap-2 rounded-xl bg-[var(--status-open)] px-4 text-[15px] font-semibold leading-[1.2] text-[#0A0A0A] active:scale-[0.985] disabled:opacity-60"
             >
-              <CircleCheck aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
-              OPEN
+              {isSubmitting ? (
+                <RefreshCw aria-hidden="true" className="h-5 w-5 animate-spin" strokeWidth={2.6} />
+              ) : (
+                <CircleCheck aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
+              )}
+              {isSubmitting ? "Recording" : "OPEN"}
             </button>
             <button
               type="button"
@@ -1671,8 +1690,12 @@ function ReportSheet({
               disabled={!canReport}
               className="flex min-h-[56px] items-center justify-center gap-2 rounded-xl bg-[var(--status-closed)] px-4 text-[15px] font-semibold leading-[1.2] text-white active:scale-[0.985] disabled:opacity-60"
             >
-              <CircleX aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
-              CLOSED
+              {isSubmitting ? (
+                <RefreshCw aria-hidden="true" className="h-5 w-5 animate-spin" strokeWidth={2.6} />
+              ) : (
+                <CircleX aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
+              )}
+              {isSubmitting ? "Recording" : "CLOSED"}
             </button>
           </div>
         </div>
@@ -1780,6 +1803,7 @@ function SuggestGateSheet({
         type="button"
         className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
         aria-label="Close gate suggestion sheet"
+        disabled={isSubmitting}
         onClick={onBackdropClick}
       />
       <div className="absolute inset-x-0 bottom-0 flex justify-center px-3 sm:px-4">
@@ -1787,6 +1811,7 @@ function SuggestGateSheet({
           role="dialog"
           aria-modal="true"
           aria-labelledby="suggest-sheet-title"
+          aria-busy={isSubmitting}
           className="sheet-open w-full max-w-[460px] touch-none rounded-t-[20px] border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-4 pb-[calc(20px+env(safe-area-inset-bottom))] pt-3 shadow-2xl"
           style={{
             transform: `translateY(${offset}px)`,
@@ -1817,6 +1842,7 @@ function SuggestGateSheet({
             <button
               type="button"
               onClick={onBackdropClick}
+              disabled={isSubmitting}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)]"
               aria-label="Close gate suggestion sheet"
             >
@@ -1829,6 +1855,7 @@ function SuggestGateSheet({
             <input
               value={roadName}
               onChange={(event) => setRoadName(event.target.value)}
+              disabled={isSubmitting}
               maxLength={100}
               placeholder="Eg. Railway Station Road"
               className="mt-2 min-h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 text-[15px] font-normal leading-[1.5] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
@@ -1840,6 +1867,7 @@ function SuggestGateSheet({
             <textarea
               value={note}
               onChange={(event) => setNote(event.target.value)}
+              disabled={isSubmitting}
               maxLength={180}
               rows={3}
               placeholder="Optional nearby landmark"
@@ -1863,8 +1891,12 @@ function SuggestGateSheet({
             disabled={!canSubmit}
             className="mt-4 flex min-h-[56px] w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 text-[15px] font-semibold leading-[1.2] text-[#0A0A0A] active:scale-[0.985] disabled:opacity-60"
           >
-            <MapPin aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
-            {isSubmitting ? "Adding" : "Add pending suggestion"}
+            {isSubmitting ? (
+              <RefreshCw aria-hidden="true" className="h-5 w-5 animate-spin" strokeWidth={2.6} />
+            ) : (
+              <MapPin aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
+            )}
+            {isSubmitting ? "Adding..." : "Add pending suggestion"}
           </button>
         </form>
       </div>
@@ -1897,7 +1929,14 @@ function SuggestionReviewSheet({
   const turnstileWidgetIdRef = useRef<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [turnstileError, setTurnstileError] = useState(false);
+  const [pendingVote, setPendingVote] = useState<SuggestionVote | null>(null);
   const canVote = !isSubmitting && (!isTurnstileEnabled || Boolean(turnstileToken));
+
+  useEffect(() => {
+    if (!isSubmitting) {
+      setPendingVote(null);
+    }
+  }, [isSubmitting]);
 
   useEffect(() => {
     if (!isTurnstileEnabled || !turnstileRef.current) {
@@ -1941,12 +1980,22 @@ function SuggestionReviewSheet({
     };
   }, []);
 
+  const handleVote = (vote: SuggestionVote) => {
+    if (!canVote) {
+      return;
+    }
+
+    setPendingVote(vote);
+    onVote(vote, turnstileToken);
+  };
+
   return (
     <div className="fixed inset-0 z-[60]" role="presentation">
       <button
         type="button"
         className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
         aria-label="Close suggestion review sheet"
+        disabled={isSubmitting}
         onClick={onBackdropClick}
       />
       <div className="absolute inset-x-0 bottom-0 flex justify-center px-3 sm:px-4">
@@ -1954,6 +2003,7 @@ function SuggestionReviewSheet({
           role="dialog"
           aria-modal="true"
           aria-labelledby="review-sheet-title"
+          aria-busy={isSubmitting}
           className="sheet-open w-full max-w-[460px] touch-none rounded-t-[20px] border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-4 pb-[calc(20px+env(safe-area-inset-bottom))] pt-3 shadow-2xl"
           style={{
             transform: `translateY(${offset}px)`,
@@ -1986,6 +2036,7 @@ function SuggestionReviewSheet({
             <button
               type="button"
               onClick={onBackdropClick}
+              disabled={isSubmitting}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)]"
               aria-label="Close suggestion review sheet"
             >
@@ -2021,21 +2072,29 @@ function SuggestionReviewSheet({
           <div className="mt-4 grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => onVote("confirm", turnstileToken)}
+              onClick={() => handleVote("confirm")}
               disabled={!canVote}
               className="flex min-h-[56px] items-center justify-center gap-2 rounded-xl bg-[var(--status-open)] px-4 text-[15px] font-semibold leading-[1.2] text-[#0A0A0A] active:scale-[0.985] disabled:opacity-60"
             >
-              <CircleCheck aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
-              Confirm
+              {pendingVote === "confirm" ? (
+                <RefreshCw aria-hidden="true" className="h-5 w-5 animate-spin" strokeWidth={2.6} />
+              ) : (
+                <CircleCheck aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
+              )}
+              {pendingVote === "confirm" ? "Confirming" : "Confirm"}
             </button>
             <button
               type="button"
-              onClick={() => onVote("reject", turnstileToken)}
+              onClick={() => handleVote("reject")}
               disabled={!canVote}
               className="flex min-h-[56px] items-center justify-center gap-2 rounded-xl bg-[var(--status-closed)] px-4 text-[15px] font-semibold leading-[1.2] text-white active:scale-[0.985] disabled:opacity-60"
             >
-              <CircleX aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
-              Wrong
+              {pendingVote === "reject" ? (
+                <RefreshCw aria-hidden="true" className="h-5 w-5 animate-spin" strokeWidth={2.6} />
+              ) : (
+                <CircleX aria-hidden="true" className="h-5 w-5" strokeWidth={2.6} />
+              )}
+              {pendingVote === "reject" ? "Sending" : "Wrong"}
             </button>
           </div>
         </div>
@@ -2411,13 +2470,24 @@ function MapView({
           onClick={startPlacingSuggestion}
           disabled={
             !isMapReady ||
+            isLoading ||
             selectedDistrict === "All" ||
             isPlacingSuggestion
           }
           className="flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-[13px] font-semibold leading-[1.5] text-[var(--text-primary)] shadow-2xl disabled:opacity-60"
         >
-          <MapPin aria-hidden="true" className="h-4 w-4 text-[var(--accent)]" />
-          {selectedDistrict === "All" ? "Select district" : "Suggest gate"}
+          {!isMapReady || isLoading ? (
+            <RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin text-[var(--accent)]" />
+          ) : (
+            <MapPin aria-hidden="true" className="h-4 w-4 text-[var(--accent)]" />
+          )}
+          {!isMapReady || isLoading
+            ? "Map loading"
+            : selectedDistrict === "All"
+              ? "Select district"
+              : isPlacingSuggestion
+                ? "Placing"
+                : "Suggest gate"}
         </button>
       </div>
 
@@ -2426,6 +2496,7 @@ function MapView({
           <button
             type="button"
             onClick={cancelPlacingSuggestion}
+            disabled={!isPlacingSuggestion}
             className="flex min-h-11 items-center justify-center rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-[13px] font-semibold leading-[1.5] text-[var(--text-primary)] shadow-2xl"
           >
             Cancel
@@ -2433,6 +2504,7 @@ function MapView({
           <button
             type="button"
             onClick={useDraftSuggestionLocation}
+            disabled={!isPlacingSuggestion}
             className="flex min-h-11 items-center justify-center rounded-xl bg-[var(--accent)] px-3 text-[13px] font-semibold leading-[1.5] text-[#0A0A0A] shadow-2xl"
           >
             Use location
@@ -2444,9 +2516,14 @@ function MapView({
         type="button"
         onClick={useCurrentLocation}
         disabled={!isMapReady || isLocating}
+        aria-busy={isLocating}
         className="absolute bottom-4 left-4 z-10 flex min-h-11 items-center gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-[13px] font-semibold leading-[1.5] text-[var(--text-primary)] shadow-2xl disabled:opacity-60"
       >
-        <MapPin aria-hidden="true" className="h-4 w-4 text-[#2563EB]" />
+        {isLocating ? (
+          <RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin text-[#2563EB]" />
+        ) : (
+          <MapPin aria-hidden="true" className="h-4 w-4 text-[#2563EB]" />
+        )}
         {isLocating ? "Locating" : "Use my location"}
       </button>
     </div>
