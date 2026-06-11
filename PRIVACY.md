@@ -65,4 +65,4 @@ Location is optional. If permission is denied, users can still view the app and 
 
 ## Contact
 
-Before public launch, add a public contact email or form here for privacy and data correction requests.
+For privacy, gate correction, or abuse reports, contact nimbact@gmail.com.

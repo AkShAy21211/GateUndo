@@ -69,6 +69,9 @@ Run:
 SELECT id, name, district FROM gates LIMIT 5;
 SELECT * FROM gate_statuses LIMIT 5;
 SELECT * FROM report_events ORDER BY created_at DESC LIMIT 5;
+SELECT * FROM admin_report_abuse_signals;
+SELECT * FROM admin_gate_trust_review;
+SELECT * FROM admin_gate_suggestion_review;
 ```
 
 `reports` should not be readable from the public app. The app should read `gate_statuses`.
@@ -91,3 +94,9 @@ Use the app:
 3. Confirm location is not requested automatically.
 4. Tap `Use my location`.
 5. Allow location and confirm the blue marker appears.
+
+## 8. Kannur beta launch
+
+Ten starter gates are enough for a small Kannur beta if you can personally verify them or get trusted local confirmation. Keep uncertain gates provisional. Do not present all-Kerala coverage as ready until 30-50 verified gates exist across 2-3 districts.
+
+Check `ABUSE_MONITORING.md` daily during beta.

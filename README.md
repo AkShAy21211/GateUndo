@@ -16,6 +16,7 @@ Avoid wording like safe, clear, proceed, or gate is open.
 
 ## Current MVP
 
+- Kannur beta starts by default
 - Mobile-first gate list and map
 - District filters
 - One-tap anonymous reports
@@ -26,6 +27,14 @@ Avoid wording like safe, clear, proceed, or gate is open.
 - Offline saved data cache
 - PWA install support
 - DPDP/privacy notes at `/privacy`
+
+## Kannur Beta Seed Rule
+
+Ten gates is enough for a small Kannur beta because the launch scope is local and reviewable. Before calling a gate verified, check the crossing on the ground or with a trusted local and make sure the pin is close to the actual road crossing, not just the railway line.
+
+For wider public launch, use 30-50 verified gates across 2-3 districts and keep all uncertain gates provisional.
+
+See `ABUSE_MONITORING.md` for daily review queries and seed verification steps.
 
 ## Later Roadmap
 

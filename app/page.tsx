@@ -41,6 +41,7 @@ const DISTRICTS = [
   "Thrissur",
   "Thiruvananthapuram"
 ];
+const LAUNCH_DISTRICT = "Kannur";
 type ReportStatus = "open" | "closed";
 
 type GateStatus = ReportStatus | "unknown";
@@ -1016,7 +1017,7 @@ function suggestionStatusDetail(suggestion: GateSuggestionView) {
 
 export default function Home() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const [selectedDistrict, setSelectedDistrict] = useState("All");
+  const [selectedDistrict, setSelectedDistrict] = useState(LAUNCH_DISTRICT);
   const [gates, setGates] = useState<GateView[]>([]);
   const [suggestions, setSuggestions] = useState<GateSuggestionView[]>([]);
   const [selectedGate, setSelectedGate] = useState<GateView | null>(null);
@@ -1955,6 +1956,17 @@ export default function Home() {
               </span>
             </div>
           ) : null}
+
+          <div className="mb-4 flex min-h-11 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] px-3 text-[13px] font-semibold leading-[1.5] text-[var(--text-secondary)]">
+            <ShieldCheck
+              aria-hidden="true"
+              className="h-4 w-4 shrink-0 text-[var(--accent)]"
+            />
+            <span>
+              Kannur beta: starter gates first. More districts after field
+              verification.
+            </span>
+          </div>
         </div>
 
         {viewMode === "list" ? (
@@ -2047,8 +2059,10 @@ export default function Home() {
                 </h2>
                 <p className="mt-2 text-[14px] font-normal leading-[1.5] text-[var(--text-secondary)]">
                   {selectedDistrict === "All"
-                    ? "No reports yet. Be the first!"
-                    : "Try a different district"}
+                    ? `Try ${LAUNCH_DISTRICT} first during beta`
+                    : selectedDistrict === LAUNCH_DISTRICT
+                      ? "No reports yet. Be the first!"
+                      : `No verified starter gates yet. Try ${LAUNCH_DISTRICT} or suggest one on the map.`}
                 </p>
               </div>
             ) : null}

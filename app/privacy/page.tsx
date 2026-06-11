@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Database,
   LocateFixed,
+  Mail,
   ShieldCheck,
   Smartphone,
   TriangleAlert,
@@ -131,8 +132,26 @@ export default function PrivacyPage() {
           <p className="mt-3 text-[13px] font-normal leading-[1.5] text-[var(--text-secondary)]">
             Users can deny location permission, clear browser site data to
             remove local app cache and the browser device id, and dismiss app
-            install prompts. Add a public contact email here before launch for
-            privacy and correction requests.
+            install prompts.
+          </p>
+        </section>
+
+        <section className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-4">
+          <div className="flex items-center gap-2 text-[var(--accent)]">
+            <Mail aria-hidden="true" className="h-5 w-5" />
+            <h2 className="text-[16px] font-semibold leading-[1.2]">
+              Contact
+            </h2>
+          </div>
+          <p className="mt-3 text-[13px] font-normal leading-[1.5] text-[var(--text-secondary)]">
+            For privacy, gate correction, or abuse reports, contact{" "}
+            <a
+              href="mailto:nimbact@gmail.com"
+              className="font-semibold text-[var(--accent)]"
+            >
+              nimbact@gmail.com
+            </a>
+            .
           </p>
         </section>
       </div>
