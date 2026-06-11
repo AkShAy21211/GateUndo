@@ -24,7 +24,10 @@ const corsHeaders = {
 };
 
 const REPORT_COOLDOWN_SECONDS = 120;
+const GLOBAL_REPORT_WINDOW_SECONDS = 600;
+const MAX_REPORTS_PER_GLOBAL_WINDOW = 8;
 const NEARBY_REPORT_DISTANCE_KM = 0.2;
+const MAX_GPS_REPORT_DISTANCE_KM = 1;
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
@@ -95,6 +98,9 @@ Deno.serve(async (request) => {
   const cooldownCutoff = new Date(
     Date.now() - REPORT_COOLDOWN_SECONDS * 1000,
   ).toISOString();
+  const globalCooldownCutoff = new Date(
+    Date.now() - GLOBAL_REPORT_WINDOW_SECONDS * 1000,
+  ).toISOString();
 
   const { data: gate, error: gateError } = await supabase
     .from("gates")
@@ -133,6 +139,26 @@ Deno.serve(async (request) => {
     );
   }
 
+  const { count: globalReportCount, error: globalRateError } = await supabase
+    .from("reports")
+    .select("id", { count: "exact", head: true })
+    .eq("reporter_hash", reporterHash)
+    .gte("reported_at", globalCooldownCutoff);
+
+  if (globalRateError) {
+    return jsonResponse({ error: "server_error" }, 500);
+  }
+
+  if ((globalReportCount ?? 0) >= MAX_REPORTS_PER_GLOBAL_WINDOW) {
+    return jsonResponse(
+      {
+        error: "rate_limited",
+        retry_after_seconds: GLOBAL_REPORT_WINDOW_SECONDS,
+      },
+      429,
+    );
+  }
+
   const reportDistanceKm = isKeralaCoordinate(
     payload.user_lat,
     payload.user_lng,
@@ -141,6 +167,19 @@ Deno.serve(async (request) => {
     : null;
   const isNearby =
     reportDistanceKm !== null && reportDistanceKm <= NEARBY_REPORT_DISTANCE_KM;
+
+  if (
+    reportDistanceKm !== null &&
+    reportDistanceKm > MAX_GPS_REPORT_DISTANCE_KM
+  ) {
+    return jsonResponse(
+      {
+        error: "location_too_far",
+        max_distance_meters: MAX_GPS_REPORT_DISTANCE_KM * 1000,
+      },
+      422,
+    );
+  }
 
   const { data: report, error: insertError } = await supabase
     .from("reports")
