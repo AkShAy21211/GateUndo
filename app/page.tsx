@@ -216,6 +216,8 @@ const DEVICE_ID_KEY = "railundo_device_id";
 const SUGGESTION_VOTES_KEY = "railundo_suggestion_votes";
 const TURNSTILE_SCRIPT_ID = "railundo-turnstile-script";
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+const TURNSTILE_HELP_TEXT =
+  "Security check unavailable. Check your connection or try again.";
 const isTurnstileEnabled = Boolean(
   TURNSTILE_SITE_KEY && TURNSTILE_SITE_KEY !== "your_turnstile_site_key",
 );
@@ -347,10 +349,18 @@ function loadTurnstileScript() {
   const existingScript = document.getElementById(TURNSTILE_SCRIPT_ID);
 
   if (existingScript) {
-    return new Promise<void>((resolve, reject) => {
-      existingScript.addEventListener("load", () => resolve(), { once: true });
-      existingScript.addEventListener("error", () => reject(), { once: true });
-    });
+    if (existingScript.dataset.turnstileStatus === "loaded") {
+      return Promise.resolve();
+    }
+
+    if (existingScript.dataset.turnstileStatus === "failed") {
+      existingScript.remove();
+    } else {
+      return new Promise<void>((resolve, reject) => {
+        existingScript.addEventListener("load", () => resolve(), { once: true });
+        existingScript.addEventListener("error", () => reject(), { once: true });
+      });
+    }
   }
 
   return new Promise<void>((resolve, reject) => {
@@ -359,10 +369,113 @@ function loadTurnstileScript() {
     script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
     script.async = true;
     script.defer = true;
-    script.addEventListener("load", () => resolve(), { once: true });
-    script.addEventListener("error", () => reject(), { once: true });
+    script.addEventListener(
+      "load",
+      () => {
+        script.dataset.turnstileStatus = "loaded";
+        resolve();
+      },
+      { once: true },
+    );
+    script.addEventListener(
+      "error",
+      () => {
+        script.dataset.turnstileStatus = "failed";
+        reject();
+      },
+      { once: true },
+    );
     document.head.appendChild(script);
   });
+}
+
+function TurnstileCheck({
+  onTokenChange,
+}: {
+  onTokenChange: (token: string | null) => void;
+}) {
+  const turnstileRef = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetIdRef = useRef<string | null>(null);
+  const [turnstileError, setTurnstileError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+
+  useEffect(() => {
+    if (!isTurnstileEnabled || !turnstileRef.current) {
+      return;
+    }
+
+    let isMounted = true;
+
+    loadTurnstileScript()
+      .then(() => {
+        if (!isMounted || !window.turnstile || !turnstileRef.current) {
+          return;
+        }
+
+        if (turnstileWidgetIdRef.current) {
+          window.turnstile.remove(turnstileWidgetIdRef.current);
+          turnstileWidgetIdRef.current = null;
+        }
+
+        turnstileWidgetIdRef.current = window.turnstile.render(
+          turnstileRef.current,
+          {
+            sitekey: TURNSTILE_SITE_KEY!,
+            theme: "dark",
+            size: "flexible",
+            callback: (token) => {
+              onTokenChange(token);
+              setTurnstileError(false);
+            },
+            "expired-callback": () => onTokenChange(null),
+            "error-callback": () => {
+              onTokenChange(null);
+              setTurnstileError(true);
+            },
+          },
+        );
+      })
+      .catch(() => {
+        onTokenChange(null);
+        setTurnstileError(true);
+      });
+
+    return () => {
+      isMounted = false;
+
+      if (turnstileWidgetIdRef.current && window.turnstile) {
+        window.turnstile.remove(turnstileWidgetIdRef.current);
+        turnstileWidgetIdRef.current = null;
+      }
+    };
+  }, [onTokenChange, retryCount]);
+
+  const retryTurnstile = () => {
+    onTokenChange(null);
+    setTurnstileError(false);
+    setRetryCount((currentRetryCount) => currentRetryCount + 1);
+  };
+
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-2">
+      <div ref={turnstileRef} />
+      {turnstileError ? (
+        <div className="mt-2 flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[13px] font-semibold leading-[1.5] text-[var(--danger)]">
+            {TURNSTILE_HELP_TEXT}
+          </p>
+          <button
+            type="button"
+            onClick={retryTurnstile}
+            className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 text-[13px] font-semibold leading-[1.5] text-[var(--text-primary)]"
+          >
+            <RefreshCw aria-hidden="true" className="h-4 w-4" />
+            Retry
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function requestBrowserLocation() {
@@ -712,6 +825,15 @@ function isRateLimitError(error: ReportInvokeError) {
     error.context?.status === 429 ||
     error.message.includes("429") ||
     error.message.toLowerCase().includes("rate")
+  );
+}
+
+function isBotCheckError(error: ReportInvokeError) {
+  return (
+    error.context?.status === 403 ||
+    error.message.includes("403") ||
+    error.message.toLowerCase().includes("bot") ||
+    error.message.toLowerCase().includes("security")
   );
 }
 
@@ -1200,6 +1322,8 @@ export default function Home() {
         setToastMessage(
           isRateLimitError(error)
             ? "Please wait before reporting again."
+            : isBotCheckError(error)
+              ? "Security check failed. Retry the check and submit again."
             : "Report not recorded. Try again.",
         );
       } else if (acceptedReportAt) {
@@ -1280,6 +1404,8 @@ export default function Home() {
         setToastMessage(
           isRateLimitError(error ?? { message: "" })
             ? "Please wait before suggesting again."
+            : isBotCheckError(error ?? { message: "" })
+              ? "Security check failed. Retry the check and submit again."
             : isDuplicateSuggestionError(error ?? { message: "" })
               ? "A gate or suggestion is already near here."
               : "Suggestion not recorded. Try again.",
@@ -1350,6 +1476,8 @@ export default function Home() {
         setToastMessage(
           isRateLimitError(error ?? { message: "" })
             ? "Please wait before voting again."
+            : isBotCheckError(error ?? { message: "" })
+              ? "Security check failed. Retry the check and vote again."
             : "Vote not recorded. Try again.",
         );
         isVotingSuggestionRef.current = false;
@@ -1791,52 +1919,7 @@ function ReportSheet({
   const TrustIcon = trust.Icon;
   const verification = getVerificationSummary(gate);
   const VerificationIcon = verification.Icon;
-  const turnstileRef = useRef<HTMLDivElement | null>(null);
-  const turnstileWidgetIdRef = useRef<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
-  const [turnstileError, setTurnstileError] = useState(false);
-
-  useEffect(() => {
-    if (!isTurnstileEnabled || !turnstileRef.current) {
-      return;
-    }
-
-    let isMounted = true;
-
-    loadTurnstileScript()
-      .then(() => {
-        if (!isMounted || !window.turnstile || !turnstileRef.current) {
-          return;
-        }
-
-        turnstileWidgetIdRef.current = window.turnstile.render(
-          turnstileRef.current,
-          {
-            sitekey: TURNSTILE_SITE_KEY!,
-            theme: "dark",
-            size: "flexible",
-            callback: (token) => {
-              setTurnstileToken(token);
-              setTurnstileError(false);
-            },
-            "expired-callback": () => setTurnstileToken(null),
-            "error-callback": () => {
-              setTurnstileToken(null);
-              setTurnstileError(true);
-            },
-          },
-        );
-      })
-      .catch(() => setTurnstileError(true));
-
-    return () => {
-      isMounted = false;
-
-      if (turnstileWidgetIdRef.current && window.turnstile) {
-        window.turnstile.remove(turnstileWidgetIdRef.current);
-      }
-    };
-  }, []);
 
   const canReport =
     !isSubmitting && (!isTurnstileEnabled || Boolean(turnstileToken));
@@ -1916,13 +1999,8 @@ function ReportSheet({
           </div>
 
           {isTurnstileEnabled ? (
-            <div className="mb-3 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-2">
-              <div ref={turnstileRef} />
-              {turnstileError ? (
-                <p className="mt-2 text-[13px] font-semibold leading-[1.5] text-[var(--danger)]">
-                  Security check failed. Try again.
-                </p>
-              ) : null}
+            <div className="mb-3">
+              <TurnstileCheck onTokenChange={setTurnstileToken} />
             </div>
           ) : null}
 
@@ -1987,52 +2065,7 @@ function SuggestGateSheet({
 }) {
   const [roadName, setRoadName] = useState("");
   const [note, setNote] = useState("");
-  const turnstileRef = useRef<HTMLDivElement | null>(null);
-  const turnstileWidgetIdRef = useRef<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
-  const [turnstileError, setTurnstileError] = useState(false);
-
-  useEffect(() => {
-    if (!isTurnstileEnabled || !turnstileRef.current) {
-      return;
-    }
-
-    let isMounted = true;
-
-    loadTurnstileScript()
-      .then(() => {
-        if (!isMounted || !window.turnstile || !turnstileRef.current) {
-          return;
-        }
-
-        turnstileWidgetIdRef.current = window.turnstile.render(
-          turnstileRef.current,
-          {
-            sitekey: TURNSTILE_SITE_KEY!,
-            theme: "dark",
-            size: "flexible",
-            callback: (token) => {
-              setTurnstileToken(token);
-              setTurnstileError(false);
-            },
-            "expired-callback": () => setTurnstileToken(null),
-            "error-callback": () => {
-              setTurnstileToken(null);
-              setTurnstileError(true);
-            },
-          },
-        );
-      })
-      .catch(() => setTurnstileError(true));
-
-    return () => {
-      isMounted = false;
-
-      if (turnstileWidgetIdRef.current && window.turnstile) {
-        window.turnstile.remove(turnstileWidgetIdRef.current);
-      }
-    };
-  }, []);
 
   const canSubmit =
     !isSubmitting &&
@@ -2132,13 +2165,8 @@ function SuggestGateSheet({
           </label>
 
           {isTurnstileEnabled ? (
-            <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-2">
-              <div ref={turnstileRef} />
-              {turnstileError ? (
-                <p className="mt-2 text-[13px] font-semibold leading-[1.5] text-[var(--danger)]">
-                  Security check failed. Try again.
-                </p>
-              ) : null}
+            <div className="mt-3">
+              <TurnstileCheck onTokenChange={setTurnstileToken} />
             </div>
           ) : null}
 
@@ -2183,10 +2211,7 @@ function SuggestionReviewSheet({
   onVote: (vote: SuggestionVote, turnstileToken: string | null) => void;
   isSubmitting: boolean;
 }) {
-  const turnstileRef = useRef<HTMLDivElement | null>(null);
-  const turnstileWidgetIdRef = useRef<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
-  const [turnstileError, setTurnstileError] = useState(false);
   const [pendingVote, setPendingVote] = useState<SuggestionVote | null>(null);
   const canVote = !isSubmitting && (!isTurnstileEnabled || Boolean(turnstileToken));
   const displayedVote = pendingVote ?? currentVote;
@@ -2202,48 +2227,6 @@ function SuggestionReviewSheet({
       setPendingVote(null);
     }
   }, [isSubmitting]);
-
-  useEffect(() => {
-    if (!isTurnstileEnabled || !turnstileRef.current) {
-      return;
-    }
-
-    let isMounted = true;
-
-    loadTurnstileScript()
-      .then(() => {
-        if (!isMounted || !window.turnstile || !turnstileRef.current) {
-          return;
-        }
-
-        turnstileWidgetIdRef.current = window.turnstile.render(
-          turnstileRef.current,
-          {
-            sitekey: TURNSTILE_SITE_KEY!,
-            theme: "dark",
-            size: "flexible",
-            callback: (token) => {
-              setTurnstileToken(token);
-              setTurnstileError(false);
-            },
-            "expired-callback": () => setTurnstileToken(null),
-            "error-callback": () => {
-              setTurnstileToken(null);
-              setTurnstileError(true);
-            },
-          },
-        );
-      })
-      .catch(() => setTurnstileError(true));
-
-    return () => {
-      isMounted = false;
-
-      if (turnstileWidgetIdRef.current && window.turnstile) {
-        window.turnstile.remove(turnstileWidgetIdRef.current);
-      }
-    };
-  }, []);
 
   const handleVote = (vote: SuggestionVote) => {
     if (!canVote) {
@@ -2343,13 +2326,8 @@ function SuggestionReviewSheet({
           </div>
 
           {isTurnstileEnabled ? (
-            <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-2">
-              <div ref={turnstileRef} />
-              {turnstileError ? (
-                <p className="mt-2 text-[13px] font-semibold leading-[1.5] text-[var(--danger)]">
-                  Security check failed. Try again.
-                </p>
-              ) : null}
+            <div className="mt-3">
+              <TurnstileCheck onTokenChange={setTurnstileToken} />
             </div>
           ) : null}
 
