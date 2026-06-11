@@ -82,6 +82,16 @@ CREATE TABLE gate_suggestions (
   lat DOUBLE PRECISION NOT NULL CHECK (lat BETWEEN 8.0 AND 13.0),
   lng DOUBLE PRECISION NOT NULL CHECK (lng BETWEEN 74.5 AND 78.0),
   road_name TEXT NOT NULL CHECK (char_length(trim(road_name)) BETWEEN 3 AND 100),
+  nearest_station_name TEXT
+    CHECK (
+      nearest_station_name IS NULL
+      OR char_length(trim(nearest_station_name)) BETWEEN 2 AND 80
+    ),
+  nearest_station_code TEXT
+    CHECK (
+      nearest_station_code IS NULL
+      OR nearest_station_code = upper(trim(nearest_station_code))
+    ),
   note TEXT CHECK (note IS NULL OR char_length(trim(note)) <= 180),
   status TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'community_confirmed', 'approved', 'rejected')),
@@ -512,6 +522,8 @@ GRANT SELECT (
   lat,
   lng,
   road_name,
+  nearest_station_name,
+  nearest_station_code,
   note,
   status,
   confirm_count,
@@ -662,6 +674,8 @@ SELECT
   gate_suggestions.lat,
   gate_suggestions.lng,
   gate_suggestions.road_name,
+  gate_suggestions.nearest_station_name,
+  gate_suggestions.nearest_station_code,
   gate_suggestions.note,
   gate_suggestions.status,
   gate_suggestions.confirm_count,

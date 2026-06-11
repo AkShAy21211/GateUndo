@@ -116,6 +116,8 @@ type GateSuggestionRow = {
   lat: number;
   lng: number;
   road_name: string;
+  nearest_station_name: string | null;
+  nearest_station_code: string | null;
   note: string | null;
   status: SuggestionStatus;
   confirm_count: number;
@@ -131,6 +133,8 @@ type GateSuggestionView = {
   lat: number;
   lng: number;
   roadName: string;
+  nearestStationName: string | null;
+  nearestStationCode: string | null;
   note: string | null;
   status: SuggestionStatus;
   confirmCount: number;
@@ -247,7 +251,7 @@ const GATE_CACHE_KEY = "railundo_gate_cache";
 const SUGGESTION_CACHE_KEY = "railundo_suggestion_cache";
 const BETA_BANNER_DISMISSED_UNTIL_KEY = "gateundo_beta_banner_dismissed_until";
 const BETA_BANNER_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
-const DATA_CACHE_VERSION = 2;
+const DATA_CACHE_VERSION = 3;
 const TRAIN_CHECK_URL = "https://enquiry.indianrail.gov.in/";
 const TURNSTILE_SCRIPT_ID = "railundo-turnstile-script";
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
@@ -708,6 +712,8 @@ function normalizeSuggestion(
     lat: suggestion.lat,
     lng: suggestion.lng,
     roadName: suggestion.road_name,
+    nearestStationName: suggestion.nearest_station_name ?? null,
+    nearestStationCode: suggestion.nearest_station_code ?? null,
     note: suggestion.note,
     status: suggestion.status,
     confirmCount: suggestion.confirm_count,
@@ -786,6 +792,24 @@ function getTrainActivityHint(gate: GateView) {
   }
 
   return `Train activity near ${stationLabel} may affect this gate`;
+}
+
+function getSuggestedStationLabel(suggestion: GateSuggestionView) {
+  if (suggestion.nearestStationName && suggestion.nearestStationCode) {
+    return `${suggestion.nearestStationName} (${suggestion.nearestStationCode})`;
+  }
+
+  return suggestion.nearestStationName || suggestion.nearestStationCode || "";
+}
+
+function getSuggestedStationHint(suggestion: GateSuggestionView) {
+  const stationLabel = getSuggestedStationLabel(suggestion);
+
+  if (!stationLabel) {
+    return "";
+  }
+
+  return `Suggested nearby station: ${stationLabel}`;
 }
 
 function statusStyles(status: GateStatus): StatusView {
@@ -1211,6 +1235,8 @@ export default function Home() {
               "lat",
               "lng",
               "road_name",
+              "nearest_station_name",
+              "nearest_station_code",
               "note",
               "status",
               "confirm_count",
@@ -1723,10 +1749,14 @@ export default function Home() {
   const submitGateSuggestion = useCallback(
     async ({
       roadName,
+      nearestStationName,
+      nearestStationCode,
       note,
       turnstileToken,
     }: {
       roadName: string;
+      nearestStationName: string;
+      nearestStationCode: string;
       note: string;
       turnstileToken: string | null;
     }) => {
@@ -1752,6 +1782,8 @@ export default function Home() {
               lat: suggestionDraft.lat,
               lng: suggestionDraft.lng,
               road_name: roadName,
+              nearest_station_name: nearestStationName || null,
+              nearest_station_code: nearestStationCode || null,
               note,
               device_id: getDeviceId(),
               turnstile_token: turnstileToken,
@@ -2574,12 +2606,16 @@ function SuggestGateSheet({
   onPointerUp: () => void;
   onSubmit: (payload: {
     roadName: string;
+    nearestStationName: string;
+    nearestStationCode: string;
     note: string;
     turnstileToken: string | null;
   }) => void;
   isSubmitting: boolean;
 }) {
   const [roadName, setRoadName] = useState("");
+  const [nearestStationName, setNearestStationName] = useState("");
+  const [nearestStationCode, setNearestStationCode] = useState("");
   const [note, setNote] = useState("");
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
@@ -2597,6 +2633,8 @@ function SuggestGateSheet({
 
     onSubmit({
       roadName: roadName.trim(),
+      nearestStationName: nearestStationName.trim(),
+      nearestStationCode: nearestStationCode.trim().toUpperCase(),
       note: note.trim(),
       turnstileToken,
     });
@@ -2667,6 +2705,38 @@ function SuggestGateSheet({
             />
           </label>
 
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_120px]">
+            <label className="block text-[13px] font-semibold leading-[1.5] text-[var(--text-secondary)]">
+              Nearby station
+              <input
+                value={nearestStationName}
+                onChange={(event) => setNearestStationName(event.target.value)}
+                disabled={isSubmitting}
+                maxLength={80}
+                placeholder="Optional"
+                className="mt-2 min-h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 text-[15px] font-normal leading-[1.5] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+              />
+            </label>
+
+            <label className="block text-[13px] font-semibold leading-[1.5] text-[var(--text-secondary)]">
+              Code
+              <input
+                value={nearestStationCode}
+                onChange={(event) =>
+                  setNearestStationCode(
+                    event.target.value
+                      .replace(/[^a-z0-9]/gi, "")
+                      .toUpperCase(),
+                  )
+                }
+                disabled={isSubmitting}
+                maxLength={12}
+                placeholder="Eg. TLY"
+                className="mt-2 min-h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 text-[15px] font-normal uppercase leading-[1.5] text-[var(--text-primary)] placeholder:normal-case placeholder:text-[var(--text-muted)]"
+              />
+            </label>
+          </div>
+
           <label className="mt-3 block text-[13px] font-semibold leading-[1.5] text-[var(--text-secondary)]">
             Note
             <textarea
@@ -2729,6 +2799,7 @@ function SuggestionReviewSheet({
 }) {
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [pendingVote, setPendingVote] = useState<SuggestionVote | null>(null);
+  const stationHint = getSuggestedStationHint(suggestion);
   const canVote = !isSubmitting && (!isTurnstileEnabled || Boolean(turnstileToken));
   const displayedVote = pendingVote ?? currentVote;
   const voteStatusText =
@@ -2815,6 +2886,15 @@ function SuggestionReviewSheet({
             <p className="mt-1 text-[13px] font-normal leading-[1.5] text-[var(--text-muted)]">
               {suggestion.nearbyConfirmCount} nearby confirmations
             </p>
+            {stationHint ? (
+              <p className="mt-2 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5] text-[var(--accent)]">
+                <TrainFront
+                  aria-hidden="true"
+                  className="h-3.5 w-3.5 shrink-0"
+                />
+                <span>{stationHint}</span>
+              </p>
+            ) : null}
             <p
               className={[
                 "mt-2 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5]",
@@ -3114,11 +3194,13 @@ function MapView({
         const distanceLabel = formatDistance(
           getSuggestionDistance(suggestion, userLocation),
         );
+        const stationHint = getSuggestedStationHint(suggestion);
         popupElement.innerHTML = `
           <strong>${escapeHtml(suggestion.roadName)}</strong>
           <span>${escapeHtml(suggestionStatusLabel(suggestion.status))}</span>
           ${distanceLabel ? `<span>${escapeHtml(distanceLabel)}</span>` : ""}
           <span>${escapeHtml(suggestionStatusDetail(suggestion))}</span>
+          ${stationHint ? `<span>${escapeHtml(stationHint)}</span>` : ""}
           <em>Review suggestion</em>
         `;
         popupElement.addEventListener("click", () => {

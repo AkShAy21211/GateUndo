@@ -5,6 +5,8 @@ type SuggestGatePayload = {
   lat?: number;
   lng?: number;
   road_name?: string;
+  nearest_station_name?: string | null;
+  nearest_station_code?: string | null;
   note?: string | null;
   device_id?: string;
   turnstile_token?: string | null;
@@ -77,6 +79,10 @@ Deno.serve(async (request) => {
   const lat = payload.lat;
   const lng = payload.lng;
   const roadName = cleanText(payload.road_name ?? "", 100);
+  const nearestStationName =
+    cleanText(payload.nearest_station_name ?? "", 80) || null;
+  const nearestStationCode =
+    cleanStationCode(payload.nearest_station_code ?? "") || null;
   const note = cleanText(payload.note ?? "", 180) || null;
   const deviceId = payload.device_id;
 
@@ -86,6 +92,8 @@ Deno.serve(async (request) => {
     !isKeralaCoordinate(lat, lng) ||
     !roadName ||
     roadName.length < 3 ||
+    (nearestStationName !== null && nearestStationName.length < 2) ||
+    (nearestStationCode !== null && !isStationCode(nearestStationCode)) ||
     !deviceId ||
     !isUuid(deviceId)
   ) {
@@ -203,11 +211,13 @@ Deno.serve(async (request) => {
       lat,
       lng,
       road_name: roadName,
+      nearest_station_name: nearestStationName,
+      nearest_station_code: nearestStationCode,
       note,
       suggested_by_hash: suggesterHash,
     })
     .select(
-      "id, district, lat, lng, road_name, note, status, confirm_count, reject_count, nearby_confirm_count, created_at, updated_at",
+      "id, district, lat, lng, road_name, nearest_station_name, nearest_station_code, note, status, confirm_count, reject_count, nearby_confirm_count, created_at, updated_at",
     )
     .single();
 
@@ -230,6 +240,14 @@ function jsonResponse(body: Record<string, unknown>, status: number) {
 
 function cleanText(value: string, maxLength: number) {
   return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function cleanStationCode(value: string) {
+  return value.replace(/\s+/g, "").trim().toUpperCase().slice(0, 12);
+}
+
+function isStationCode(value: string) {
+  return /^[A-Z0-9]{1,12}$/.test(value);
 }
 
 function isUuid(value: string) {

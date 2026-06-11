@@ -166,7 +166,7 @@ Deno.serve(async (request) => {
   const { data: updatedSuggestion, error: updatedError } = await supabase
     .from("gate_suggestions")
     .select(
-      "id, district, lat, lng, road_name, note, status, confirm_count, reject_count, nearby_confirm_count, created_at, updated_at",
+      "id, district, lat, lng, road_name, nearest_station_name, nearest_station_code, note, status, confirm_count, reject_count, nearby_confirm_count, created_at, updated_at",
     )
     .eq("id", suggestionId)
     .single();
