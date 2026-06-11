@@ -68,6 +68,14 @@ Nearby confirmation currently means the voter is within 500 meters of the sugges
 
 List view also surfaces up to 3 pending suggestions so people do not have to open the map just to help verify new gates.
 
+Minimal admin review is available at:
+
+```text
+/admin
+```
+
+The admin page uses a preset password from environment variables. Approving a suggestion promotes it into the live `gates` table as a verified gate and marks the suggestion as `approved`. Rejecting marks the suggestion as `rejected`.
+
 ## Train Activity Context
 
 GateUndo supports optional nearby railway station context for gates and suggestions:
@@ -205,11 +213,21 @@ Optional Edge Function secret:
 TURNSTILE_SECRET_KEY=your_turnstile_secret_key
 ```
 
+Required for `/admin`:
+
+```bash
+ADMIN_PASSWORD=your_private_admin_password
+ADMIN_SESSION_SECRET=another_long_random_secret
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+```
+
 Never commit:
 
 - Supabase service role key
 - Turnstile secret key
 - Report hash salt
+- Admin password
+- Admin session secret
 - Any private API key
 
 ## Local Development
