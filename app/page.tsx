@@ -245,6 +245,8 @@ const STALE_AFTER_MS = 75000;
 const SUPABASE_TIMEOUT_MS = 5000;
 const REPORT_NEARBY_DISTANCE_KM = 0.2;
 const REPORT_MAX_DISTANCE_KM = 1;
+const NEARBY_SUGGESTION_DISTANCE_KM = 5;
+const LIST_SUGGESTION_LIMIT = 3;
 const DEVICE_ID_KEY = "railundo_device_id";
 const SUGGESTION_VOTES_KEY = "railundo_suggestion_votes";
 const GATE_CACHE_KEY = "railundo_gate_cache";
@@ -1464,6 +1466,46 @@ export default function Home() {
     });
   }, [selectedDistrict, suggestions, userLocation]);
 
+  const listSuggestions = useMemo(() => {
+    const sortedSuggestions = [...filteredSuggestions].sort(
+      (firstSuggestion, secondSuggestion) => {
+        const firstDistance = getSuggestionDistance(
+          firstSuggestion,
+          userLocation,
+        );
+        const secondDistance = getSuggestionDistance(
+          secondSuggestion,
+          userLocation,
+        );
+        const firstIsNearby =
+          firstDistance !== null &&
+          firstDistance <= NEARBY_SUGGESTION_DISTANCE_KM;
+        const secondIsNearby =
+          secondDistance !== null &&
+          secondDistance <= NEARBY_SUGGESTION_DISTANCE_KM;
+
+        if (firstIsNearby !== secondIsNearby) {
+          return Number(secondIsNearby) - Number(firstIsNearby);
+        }
+
+        if (firstSuggestion.status !== secondSuggestion.status) {
+          return firstSuggestion.status === "community_confirmed" ? -1 : 1;
+        }
+
+        if (firstDistance !== null && secondDistance !== null) {
+          return firstDistance - secondDistance;
+        }
+
+        return (
+          new Date(secondSuggestion.updatedAt).getTime() -
+          new Date(firstSuggestion.updatedAt).getTime()
+        );
+      },
+    );
+
+    return sortedSuggestions.slice(0, LIST_SUGGESTION_LIMIT);
+  }, [filteredSuggestions, userLocation]);
+
   const filteredGateTrustStats = useMemo(() => {
     return filteredGates.reduce(
       (stats, gate) => {
@@ -2197,6 +2239,44 @@ export default function Home() {
               </div>
             ) : null}
 
+            {!isLoading && !errorMessage && listSuggestions.length > 0 ? (
+              <section
+                aria-label="Pending gate suggestions"
+                className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-3"
+              >
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-bold uppercase leading-[1.2] tracking-[0.08em] text-[var(--accent)]">
+                      Help verify new gates
+                    </p>
+                    <h2 className="mt-1 text-[16px] font-semibold leading-[1.2] text-[var(--text-primary)]">
+                      {userLocation
+                        ? "Pending near you"
+                        : selectedDistrict === "All"
+                          ? "Pending suggestions"
+                          : `Pending in ${selectedDistrict}`}
+                    </h2>
+                    <p className="mt-1 text-[13px] font-normal leading-[1.5] text-[var(--text-secondary)]">
+                      Pending suggestions are not live gates yet.
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 text-[13px] font-semibold leading-[1.2] text-[var(--text-secondary)]">
+                    {filteredSuggestions.length} pending
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {listSuggestions.map((suggestion) => (
+                    <SuggestionCard
+                      key={suggestion.id}
+                      suggestion={suggestion}
+                      distanceKm={getSuggestionDistance(suggestion, userLocation)}
+                      onOpen={openSuggestionReview}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
             {!isLoading && !errorMessage && filteredGates.length > 0 ? (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredGates.map((gate) => (
@@ -2414,6 +2494,73 @@ function GateCard({
             <VerificationIcon aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">
               {verification.label}{" \u00b7 "}{verification.detail}
+            </span>
+          </p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function SuggestionCard({
+  suggestion,
+  distanceKm,
+  onOpen,
+}: {
+  suggestion: GateSuggestionView;
+  distanceKm: number | null;
+  onOpen: (suggestion: GateSuggestionView) => void;
+}) {
+  const distanceLabel = formatDistance(distanceKm);
+  const stationHint = getSuggestedStationHint(suggestion);
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(suggestion)}
+      className="group min-h-[88px] w-full rounded-xl border border-[var(--accent)]/60 bg-[var(--accent-dim)] px-4 py-[14px] text-left transition duration-150 ease-out active:scale-[0.985] active:bg-[rgba(250,204,21,0.22)]"
+      aria-label={`Review suggested gate ${suggestion.roadName}`}
+    >
+      <div className="flex items-start gap-3">
+        <MapPin
+          aria-hidden="true"
+          className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent)]"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[13px] font-bold uppercase leading-[1.2] tracking-[0.08em] text-[var(--accent)]">
+                {suggestionStatusLabel(suggestion.status)}
+              </p>
+              <h3 className="mt-1 truncate text-[16px] font-semibold leading-[1.2] text-[var(--text-primary)]">
+                {suggestion.roadName}
+              </h3>
+            </div>
+            <span className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1 text-[13px] font-semibold leading-[1.2] text-[var(--text-secondary)]">
+              Review
+            </span>
+          </div>
+          <p className="mt-1 flex min-w-0 items-center gap-1.5 text-[13px] font-normal leading-[1.5] text-[var(--text-secondary)]">
+            <MapPin aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              {suggestion.district}
+              {distanceLabel ? ` Â· ${distanceLabel}` : ""}
+            </span>
+          </p>
+          {stationHint ? (
+            <p className="mt-1 flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-[1.5] text-[var(--accent)]">
+              <TrainFront aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{stationHint}</span>
+            </p>
+          ) : null}
+          <p className="mt-1 flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-[1.5] text-[var(--text-secondary)]">
+            <CircleCheck
+              aria-hidden="true"
+              className="h-3.5 w-3.5 shrink-0 text-[var(--status-open)]"
+            />
+            <span className="truncate">
+              {suggestion.confirmCount} confirm / {suggestion.rejectCount} wrong
+              {" \u00b7 "}{suggestion.nearbyConfirmCount} nearby
             </span>
           </p>
         </div>
