@@ -240,6 +240,8 @@ const DEVICE_ID_KEY = "railundo_device_id";
 const SUGGESTION_VOTES_KEY = "railundo_suggestion_votes";
 const GATE_CACHE_KEY = "railundo_gate_cache";
 const SUGGESTION_CACHE_KEY = "railundo_suggestion_cache";
+const BETA_BANNER_DISMISSED_UNTIL_KEY = "gateundo_beta_banner_dismissed_until";
+const BETA_BANNER_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
 const DATA_CACHE_VERSION = 1;
 const TURNSTILE_SCRIPT_ID = "railundo-turnstile-script";
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
@@ -1037,6 +1039,7 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [isOnline, setIsOnline] = useState(true);
   const [isShowingCachedData, setIsShowingCachedData] = useState(false);
+  const [showBetaBanner, setShowBetaBanner] = useState(false);
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [isSubmittingSuggestion, setIsSubmittingSuggestion] = useState(false);
   const [isVotingSuggestion, setIsVotingSuggestion] = useState(false);
@@ -1300,6 +1303,29 @@ export default function Home() {
 
   useEffect(() => {
     setSuggestionVotes(getStoredSuggestionVotes());
+  }, []);
+
+  useEffect(() => {
+    try {
+      const dismissedUntil = Number(
+        window.localStorage.getItem(BETA_BANNER_DISMISSED_UNTIL_KEY) ?? "0",
+      );
+
+      setShowBetaBanner(!dismissedUntil || Date.now() > dismissedUntil);
+    } catch {
+      setShowBetaBanner(true);
+    }
+  }, []);
+
+  const dismissBetaBanner = useCallback(() => {
+    setShowBetaBanner(false);
+
+    try {
+      window.localStorage.setItem(
+        BETA_BANNER_DISMISSED_UNTIL_KEY,
+        String(Date.now() + BETA_BANNER_SNOOZE_MS),
+      );
+    } catch {}
   }, []);
 
   const filteredGates = useMemo(() => {
@@ -1957,16 +1983,41 @@ export default function Home() {
             </div>
           ) : null}
 
-          <div className="mb-4 flex min-h-11 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] px-3 text-[13px] font-semibold leading-[1.5] text-[var(--text-secondary)]">
-            <ShieldCheck
-              aria-hidden="true"
-              className="h-4 w-4 shrink-0 text-[var(--accent)]"
-            />
-            <span>
-              Kannur beta: starter gates first. More districts after field
-              verification.
-            </span>
-          </div>
+          {showBetaBanner ? (
+            <div className="mb-4 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-surface)] p-3">
+              <div className="flex items-start gap-3">
+                <ShieldCheck
+                  aria-hidden="true"
+                  className="mt-0.5 h-5 w-5 shrink-0 text-[var(--accent)]"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[14px] font-semibold leading-[1.5] text-[var(--text-primary)]">
+                    GateUndo is in Kannur beta
+                  </p>
+                  <p className="mt-1 text-[13px] font-normal leading-[1.5] text-[var(--text-secondary)]">
+                    Data is limited right now. Community reports and verified
+                    gate suggestions help make it accurate. Always obey
+                    physical railway signals.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={dismissBetaBanner}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+                  aria-label="Dismiss beta notice for 7 days"
+                >
+                  <X aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={dismissBetaBanner}
+                className="mt-3 flex min-h-11 w-full items-center justify-center rounded-xl bg-[var(--accent)] px-3 text-[13px] font-semibold leading-[1.5] text-[#0A0A0A]"
+              >
+                Got it
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {viewMode === "list" ? (
