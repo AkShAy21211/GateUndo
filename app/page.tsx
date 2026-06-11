@@ -8,6 +8,7 @@ import {
   CircleDashed,
   CircleX,
   Clock,
+  Heart,
   Info,
   List,
   Map,
@@ -2083,6 +2084,20 @@ export default function Home() {
           </section>
         )}
       </main>
+
+      <footer className="mx-auto mt-6 flex min-h-11 w-full max-w-6xl flex-wrap items-center justify-center gap-2 px-4 pb-2 text-center text-[13px] font-semibold leading-[1.5] text-[var(--text-muted)] sm:px-6 lg:px-8">
+        <span>© 2026 GateUndo</span>
+        <span aria-hidden="true">·</span>
+        <span className="inline-flex items-center gap-1.5">
+          Made with
+          <Heart
+            aria-label="love"
+            className="h-3.5 w-3.5 fill-[var(--status-closed)] text-[var(--status-closed)]"
+            strokeWidth={2.4}
+          />
+          in Kerala
+        </span>
+      </footer>
 
       {viewMode === "list" ? (
         <button
