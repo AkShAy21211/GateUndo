@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { differenceInMinutes } from "date-fns";
+import posthog from "posthog-js";
 import {
   Circle,
   CircleCheck,
@@ -11,7 +12,7 @@ import {
   Heart,
   Info,
   List,
-  Map,
+  Map as MapIcon,
   MapPin,
   RefreshCw,
   Route,
@@ -28,9 +29,9 @@ import { createClient } from "@/lib/supabase/client";
 
 const DISTRICTS = [
   "All",
+  "Kannur",
   "Alappuzha",
   "Ernakulam",
-  "Kannur",
   "Kasaragod",
   "Kollam",
   "Kottayam",
@@ -42,6 +43,7 @@ const DISTRICTS = [
   "Thiruvananthapuram"
 ];
 const LAUNCH_DISTRICT = "Kannur";
+const LAUNCH_SCOPE_LABEL = "Kannur Beta";
 type ReportStatus = "open" | "closed";
 
 type GateStatus = ReportStatus | "unknown";
@@ -787,6 +789,57 @@ function formatDistance(distanceKm: number | null) {
   return `${Math.round(distanceKm)} km away`;
 }
 
+function captureGateUndoEvent(
+  eventName: string,
+  properties: Record<string, string | number | boolean | null>,
+) {
+  try {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!(posthog as { __loaded?: boolean }).__loaded) {
+      return;
+    }
+
+    posthog.capture(eventName, properties);
+  } catch {}
+}
+
+function getDistanceBucket(distanceKm: number | null) {
+  if (distanceKm === null) {
+    return "unknown";
+  }
+
+  if (distanceKm <= 0.2) {
+    return "under_200m";
+  }
+
+  if (distanceKm <= 0.5) {
+    return "under_500m";
+  }
+
+  if (distanceKm <= 1) {
+    return "under_1km";
+  }
+
+  return "over_1km";
+}
+
+function getGateReportSummary(gate: GateView) {
+  if (!gate.isActive) {
+    return gate.inactiveReason ?? "Inactive gate record";
+  }
+
+  if (gate.recentReportCount === 0) {
+    return "No fresh community report yet";
+  }
+
+  return `${gate.recentReportCount} recent reports - ${formatLastReported(
+    gate.lastReportedAt,
+  )}`;
+}
+
 function getStationLabel(gate: GateView) {
   if (!gate.nearestStationName || !gate.nearestStationCode) {
     return "";
@@ -890,8 +943,8 @@ function getTrustSummary(gate: GateView): TrustView {
 
   if (recentReportCount === 0) {
     return {
-      label: "No recent reports",
-      detail: "be careful",
+      label: "No fresh report",
+      detail: "update if nearby",
       className: "text-[var(--text-muted)]",
       Icon: Info,
     };
@@ -1149,6 +1202,7 @@ export default function Home() {
   const isSubmittingReportRef = useRef(false);
   const isSubmittingSuggestionRef = useRef(false);
   const isVotingSuggestionRef = useRef(false);
+  const emptyDistrictEventsRef = useRef<Set<string>>(new Set());
   const headerStatus = getHeaderStatus({
     isOnline,
     isShowingCachedData,
@@ -1435,6 +1489,44 @@ export default function Home() {
     } catch {}
   }, []);
 
+  const districtStats = useMemo(() => {
+    const stats = new Map<
+      string,
+      { activeGateCount: number; suggestionCount: number }
+    >();
+
+    for (const district of DISTRICTS) {
+      stats.set(district, {
+        activeGateCount: 0,
+        suggestionCount: 0,
+      });
+    }
+
+    for (const gate of gates) {
+      if (!gate.isActive) {
+        continue;
+      }
+
+      const districtStat = stats.get(gate.district) ?? {
+        activeGateCount: 0,
+        suggestionCount: 0,
+      };
+      districtStat.activeGateCount += 1;
+      stats.set(gate.district, districtStat);
+    }
+
+    for (const suggestion of suggestions) {
+      const districtStat = stats.get(suggestion.district) ?? {
+        activeGateCount: 0,
+        suggestionCount: 0,
+      };
+      districtStat.suggestionCount += 1;
+      stats.set(suggestion.district, districtStat);
+    }
+
+    return stats;
+  }, [gates, suggestions]);
+
   const filteredGates = useMemo(() => {
     const nextGates =
       selectedDistrict === "All"
@@ -1581,6 +1673,25 @@ export default function Home() {
       },
     );
   }, [filteredGates]);
+
+  useEffect(() => {
+    if (isLoading || errorMessage || filteredGates.length > 0) {
+      return;
+    }
+
+    const eventKey = selectedDistrict;
+
+    if (emptyDistrictEventsRef.current.has(eventKey)) {
+      return;
+    }
+
+    emptyDistrictEventsRef.current.add(eventKey);
+    captureGateUndoEvent("district_empty_viewed", {
+      district: selectedDistrict,
+      is_launch_district: selectedDistrict === LAUNCH_DISTRICT,
+      suggestion_count: filteredSuggestions.length,
+    });
+  }, [errorMessage, filteredGates.length, filteredSuggestions.length, isLoading, selectedDistrict]);
 
   const closeSheet = useCallback(() => {
     setSheetOffset(0);
@@ -1838,6 +1949,15 @@ export default function Home() {
             return nextGates;
           },
         );
+        captureGateUndoEvent("gate_report_submitted", {
+          gate_id: gateId,
+          district: selectedGate.district,
+          status,
+          distance_bucket: getDistanceBucket(reportDistanceKm),
+          is_nearby:
+            reportDistanceKm !== null &&
+            reportDistanceKm <= REPORT_NEARBY_DISTANCE_KM,
+        });
       }
 
       isSubmittingReportRef.current = false;
@@ -1936,6 +2056,11 @@ export default function Home() {
       });
       closeSheet();
       setToastMessage("Gate suggestion added for review.");
+      captureGateUndoEvent("gate_suggestion_submitted", {
+        district: selectedDistrict,
+        has_station_hint: Boolean(nearestStationName || nearestStationCode),
+        has_note: Boolean(note.trim()),
+      });
       isSubmittingSuggestionRef.current = false;
       setIsSubmittingSuggestion(false);
     },
@@ -2013,6 +2138,15 @@ export default function Home() {
           ? "You confirmed this gate."
           : "You marked this as wrong.",
       );
+      captureGateUndoEvent("gate_suggestion_vote_submitted", {
+        suggestion_id: nextSuggestion.id,
+        district: nextSuggestion.district,
+        vote,
+        distance_bucket: getDistanceBucket(
+          getSuggestionDistance(nextSuggestion, userLocation),
+        ),
+        resulting_status: nextSuggestion.status,
+      });
       isVotingSuggestionRef.current = false;
       setIsVotingSuggestion(false);
     },
@@ -2063,9 +2197,12 @@ export default function Home() {
             <div className="min-w-0">
               <div className="truncate text-[20px] font-bold leading-[1.2] text-[var(--text-primary)]">
                 GateUndo
+                <span className="ml-2 inline-flex align-middle rounded-full border border-[var(--accent)]/50 bg-[var(--accent-dim)] px-2 py-0.5 text-[11px] font-bold uppercase leading-[1.2] tracking-[0.08em] text-[var(--accent)]">
+                  Kannur Beta
+                </span>
               </div>
               <p className="truncate text-[13px] font-normal leading-[1.5] text-[var(--text-secondary)]">
-                Kerala Railway Gate Status - Crowdsourced Updates
+                Community railway gate reports - Kerala expansion later
               </p>
             </div>
           </div>
@@ -2120,7 +2257,7 @@ export default function Home() {
               ].join(" ")}
               aria-pressed={viewMode === "map"}
             >
-              <Map aria-hidden="true" className="h-4 w-4" />
+              <MapIcon aria-hidden="true" className="h-4 w-4" />
               Map
             </button>
           </div>
@@ -2132,6 +2269,16 @@ export default function Home() {
             <div className="flex gap-2 sm:flex-wrap">
               {DISTRICTS.map((district) => {
                 const isActive = selectedDistrict === district;
+                const stats = districtStats.get(district);
+                const activeGateCount = stats?.activeGateCount ?? 0;
+                const suggestionCount = stats?.suggestionCount ?? 0;
+                const isLaunchDistrict = district === LAUNCH_DISTRICT;
+                const isAllDistrict = district === "All";
+                const hasCoverage =
+                  isAllDistrict ||
+                  isLaunchDistrict ||
+                  activeGateCount > 0 ||
+                  suggestionCount > 0;
 
                 return (
                   <button
@@ -2139,14 +2286,24 @@ export default function Home() {
                     type="button"
                     onClick={() => setSelectedDistrict(district)}
                     className={[
-                      "min-h-11 shrink-0 rounded-full border px-4 text-[13px] font-semibold leading-[1.5] transition-colors",
+                      "flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold leading-[1.5] transition-colors",
                       isActive
                         ? "border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]"
                         : "border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]",
+                      hasCoverage ? "" : "opacity-60",
                     ].join(" ")}
                     aria-pressed={isActive}
                   >
-                    {district}
+                    <span>{district}</span>
+                    {isLaunchDistrict ? (
+                      <span className="rounded-full bg-[var(--accent-dim)] px-1.5 py-0.5 text-[11px] font-bold uppercase leading-[1.2] text-[var(--accent)]">
+                        Beta
+                      </span>
+                    ) : !hasCoverage ? (
+                      <span className="rounded-full bg-[var(--bg-surface)] px-1.5 py-0.5 text-[11px] font-bold uppercase leading-[1.2] text-[var(--text-muted)]">
+                        Soon
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
@@ -2171,12 +2328,12 @@ export default function Home() {
                 />
                 <div className="min-w-0 flex-1">
                   <p className="text-[14px] font-semibold leading-[1.5] text-[var(--text-primary)]">
-                    GateUndo is in Kannur beta
+                    GateUndo is starting from Kannur
                   </p>
                   <p className="mt-1 text-[13px] font-normal leading-[1.5] text-[var(--text-secondary)]">
-                    Data is limited right now. Community reports and verified
-                    gate suggestions help make it accurate. Always obey
-                    physical railway signals.
+                    Other districts stay visible for expansion, but live
+                    coverage is limited until local gates are verified. Always
+                    obey physical railway signals.
                   </p>
                 </div>
                 <button
@@ -2207,7 +2364,11 @@ export default function Home() {
             <div className="mb-3 flex flex-col gap-1 sm:mb-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-[13px] font-bold uppercase leading-[1.2] tracking-[0.08em] text-[var(--text-muted)]">
-                Kerala railway gates
+                {selectedDistrict === LAUNCH_DISTRICT
+                  ? `${LAUNCH_SCOPE_LABEL} railway gates`
+                  : selectedDistrict === "All"
+                    ? "Kannur beta and community expansion"
+                    : `${selectedDistrict} expansion`}
               </p>
               <h1 className="mt-1 text-[20px] font-bold leading-[1.2]">
                 Gate undo?
@@ -2252,7 +2413,7 @@ export default function Home() {
                   filteredGates.length ? (
                   <span className="flex items-center gap-2 text-[var(--accent)]">
                     <Info aria-hidden="true" className="h-4 w-4 shrink-0" />
-                    No recent reports here - verified gates are shown first
+                    No fresh community reports here - update if nearby
                   </span>
                 ) : (
                   <span className="flex items-center gap-2">
@@ -2285,14 +2446,16 @@ export default function Home() {
                 <h2 className="text-[16px] font-semibold leading-[1.2] text-[var(--text-primary)]">
                   {selectedDistrict === "All"
                     ? "No gates found"
-                    : `No gates in ${selectedDistrict}`}
+                    : selectedDistrict === LAUNCH_DISTRICT
+                      ? "No Kannur gates loaded"
+                      : `No verified gates in ${selectedDistrict} yet`}
                 </h2>
                 <p className="mt-2 text-[14px] font-normal leading-[1.5] text-[var(--text-secondary)]">
                   {selectedDistrict === "All"
-                    ? `Try ${LAUNCH_DISTRICT} first during beta`
+                    ? `GateUndo is starting from ${LAUNCH_DISTRICT}. Try ${LAUNCH_DISTRICT} first during beta.`
                     : selectedDistrict === LAUNCH_DISTRICT
-                      ? "No reports yet. Be the first!"
-                      : `No verified starter gates yet. Try ${LAUNCH_DISTRICT} or suggest one on the map.`}
+                      ? "Something went wrong loading the beta gate list. Try refresh."
+                      : `GateUndo is starting from ${LAUNCH_DISTRICT}. Suggest a missing gate on the map to help expand.`}
                 </p>
               </div>
             ) : null}
@@ -2536,11 +2699,7 @@ function GateCard({
           </div>
           <p className="mt-2 flex items-center gap-1.5 text-[13px] font-normal leading-[1.5] text-[var(--text-muted)]">
             <Clock aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-            <span>
-              {gate.isActive
-                ? `${gate.recentReportCount} recent reports · ${formatLastReported(gate.lastReportedAt)}`
-                : gate.inactiveReason ?? "Inactive gate record"}
-            </span>
+            <span>{getGateReportSummary(gate)}</span>
           </p>
           <p className="mt-1 flex items-center gap-1.5 text-[13px] font-semibold leading-[1.5] text-[var(--text-muted)]">
             <Info aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
@@ -3564,7 +3723,9 @@ function MapView({
         <div className="absolute inset-x-4 top-4 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 text-[14px] font-semibold leading-[1.5] text-[var(--text-secondary)]">
           {suggestions.length > 0
             ? `${suggestions.length} pending suggestions`
-            : "No gates found for this district"}
+            : selectedDistrict === LAUNCH_DISTRICT
+              ? "No Kannur gates loaded. Try refresh."
+              : `No verified gates in ${selectedDistrict} yet`}
         </div>
       ) : null}
 
