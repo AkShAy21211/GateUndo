@@ -2202,7 +2202,7 @@ export default function Home() {
                 </span>
               </div>
               <p className="truncate text-[13px] font-normal leading-[1.5] text-[var(--text-secondary)]">
-                Community railway gate reports - Kerala expansion later
+                Community railway gate reports · Kerala expansion later
               </p>
             </div>
           </div>
@@ -2455,7 +2455,7 @@ export default function Home() {
                     ? `GateUndo is starting from ${LAUNCH_DISTRICT}. Try ${LAUNCH_DISTRICT} first during beta.`
                     : selectedDistrict === LAUNCH_DISTRICT
                       ? "Something went wrong loading the beta gate list. Try refresh."
-                      : `GateUndo is starting from ${LAUNCH_DISTRICT}. Suggest a missing gate on the map to help expand.`}
+                      : `GateUndo is starting from ${LAUNCH_DISTRICT}. Suggest a missing gate to help expand.`}
                 </p>
               </div>
             ) : null}
